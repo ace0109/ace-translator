@@ -1,10 +1,16 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
-  "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main"],
+  "identifier": "main-capability",
+  "windows": [ "main", "floating", "settings" ],
   "permissions": [
-    "core:default",
-    "opener:default"
+    "core:app:default",
+    "core:window:default",
+    "core:webview:default",
+    "core:event:default",
+    "core:tray:default",
+    "core:path:default",
+    "opener:default",
+    "clipboard-manager:default",
+    "clipboard-manager:allow-clear"
   ]
 }

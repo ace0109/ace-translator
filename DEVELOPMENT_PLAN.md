@@ -95,13 +95,18 @@ ace-translator/
 - **尺寸**: 1000x700（可调整）
 
 ### 2. 悬浮翻译窗口 (Floating Translator)
-- **触发**: Ctrl+C+C (Win/Linux), Cmd+C+C (macOS)
+- **触发**: 配置一个全局快捷键 (例如：`Alt+T` 或 `Ctrl+Alt+T`)。当此快捷键被按下时，Rust 后端将执行以下步骤：
+  1. 模拟 `Ctrl+C` (或 `Cmd+C`) 操作，将当前选中的文本复制到系统剪贴板。
+  2. 读取剪贴板内容以获取待翻译文本。
+  3. 显示悬浮翻译窗口。
+  *(注意：由于 Tauri 前端无法直接获取系统其他应用的选中文本或光标位置，此机制确保了跨应用的兼容性。)*
 - **显示**:
-  - 小型悬浮窗口，显示在选中文本附近
-  - 简洁设计，只显示翻译结果
-  - 点击外部区域自动关闭
-  - 支持拖拽移动
-- **性能**: 响应时间 < 500ms
+  - 小型悬浮窗口，显示在鼠标光标附近 (或屏幕指定位置，如屏幕中央或边缘)。
+  - 简洁设计，只显示翻译结果。
+  - 点击外部区域自动关闭。
+  - 支持拖拽移动。
+  - **性能**: 窗口创建应在应用启动时完成并默认隐藏，触发时仅需显示和调整位置，响应时间 < 500ms。
+
 
 ### 3. 系统托盘 (System Tray)
 - **图标**: Windows/Linux/ macOS适配
@@ -135,7 +140,7 @@ ace-translator/
   serde_json = "1"
   tokio = { version = "1", features = ["full"] }
   reqwest = { version = "0.11", features = ["json"] }
-  sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite"] }
+  sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "bundled"] }
   ring = "0.16"
   ```
 
@@ -148,17 +153,82 @@ ace-translator/
       "pinia": "^2.1.7",
       "naive-ui": "^2.38.1",
       "@vueuse/core": "^10.7.2",
-      "dayjs": "^1.11.10"
+      "dayjs": "^1.11.10",
+      "@vicons/ionicons5": "^0.12.0"
     }
   }
   ```
 
 #### 1.2 Tauri配置更新
-- 更新 `tauri.conf.json`:
-  - 添加多窗口配置（主窗口、悬浮窗口、设置窗口）
-  - 配置系统托盘权限
-  - 配置全局快捷键权限
-  - 配置剪贴板访问权限
+- **更新 `tauri.conf.json`**:
+  - 添加多窗口配置 (主窗口、悬浮窗口、设置窗口)。**悬浮窗口 (floating window)** 建议默认 `visible: false`, `skipTaskbar: true`, `alwaysOnTop: true`, `decorations: false`。
+  - **示例多窗口配置**:
+    ```json
+    "windows": [
+      {
+        "title": "ace-translator",
+        "width": 1000,
+        "height": 700,
+        "resizable": true,
+        "minimizable": true,
+        "fullscreen": false
+      },
+      {
+        "label": "floating",
+        "title": "Floating Translator",
+        "width": 400,
+        "height": 150,
+        "decorations": false,
+        "transparent": true,
+        "resizable": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true,
+        "visible": false,
+        "minimizable": false,
+        "maximizable": false,
+        "url": "index.html#/floating"
+      },
+      {
+        "label": "settings",
+        "title": "Settings",
+        "width": 800,
+        "height": 600,
+        "resizable": false,
+        "minimizable": false,
+        "fullscreen": false,
+        "visible": false,
+        "url": "index.html#/settings"
+      }
+    ],
+    ```
+
+- **配置 `src-tauri/capabilities/default.json`**:
+  - 在 Tauri 2.0 中，权限通过能力文件 (`.json`) 精细管理。需要确保以下权限被显式声明：
+    - `window:allow-all` (或更细粒度的 `window:allow-hide`, `window:allow-show`, `window:allow-set-position`, `window:allow-set-size`)
+    - `global-shortcut:allow-register`
+    - `tray:allow-all` (或更细粒度的 `tray:allow-set-tooltip`, `tray:allow-set-menu`, `tray:allow-on-menu-event`)
+    - `clipboard:allow-all` (或更细粒度的 `clipboard:allow-read-text`, `clipboard:allow-write-text`)
+    - `app:allow-show`, `app:allow-hide`
+    - `shell:allow-open` (如果需要打开外部链接)
+    - `dialog:allow-all` (如果需要文件选择等对话框)
+    - `path:allow-all` (如果需要访问应用数据目录存储 SQLite 数据库)
+  - **示例 `default.json` 权限配置片段**:
+    ```json
+    {
+      "identifier": "main-capability",
+      "windows": [ "main", "floating", "settings" ],
+      "permissions": [
+        "window:all",
+        "app:all",
+        "global-shortcut:allow-register",
+        "tray:all",
+        "clipboard:all",
+        "shell:allow-open",
+        "dialog:all",
+        "path:all"
+      ]
+    }
+    ```
 
 #### 1.3 基础文件结构
 - 创建目录结构
@@ -232,9 +302,9 @@ CREATE TABLE settings (
 **目标**: 实现系统集成功能
 
 #### 4.1 全局快捷键
-- 注册Ctrl+C+C / Cmd+C+C快捷键
-- 实现选中文本检测
-- 触发悬浮窗口显示
+- 注册自定义全局快捷键 (例如：`Alt+T`)。
+- 当快捷键触发时，后端模拟系统 `Ctrl+C` (或 `Cmd+C`) 操作，将选中文本复制到剪贴板。
+- 从剪贴板读取文本，并触发悬浮窗口显示和翻译。
 
 #### 4.2 系统托盘
 - 托盘图标显示
@@ -242,9 +312,9 @@ CREATE TABLE settings (
 - 后台运行管理
 
 #### 4.3 窗口管理
-- 多窗口协调
+- 多窗口协调 (主窗口、悬浮窗口、设置窗口)
 - 窗口状态同步
-- 最小化/恢复逻辑
+- 最小化/恢复逻辑 (特别是当主窗口关闭时最小化到托盘)
 
 ### Phase 5: 优化和测试 (1-2天)
 **目标**: 性能优化和功能测试
@@ -254,6 +324,7 @@ CREATE TABLE settings (
 - 翻译缓存机制
 - 内存使用优化
 - 启动时间优化
+- **Zhipu AI 流式响应**: 考虑在 Zhipu AI API 调用中启用流式传输 (`stream: true`)，以提供更平滑的用户体验，让翻译结果逐步显示。
 
 #### 5.2 用户体验优化
 - 加载状态指示
@@ -285,31 +356,39 @@ pub fn decrypt_api_key(encrypted: &str) -> Result<String, Error> {
 ```
 
 ### 2. 快捷键检测
-```typescript
-// 使用@vueuse/core进行快捷键监听
-import { useMagicKeys } from '@vueuse/core'
-
-const { ctrl_c, cmd_c } = useMagicKeys()
-
-watch([ctrl_c, cmd_c], ([ctrl, cmd]) => {
-  if (ctrl && isSecondPress) {
-    // 触发悬浮翻译
-  }
-})
+```rust
+// 使用 tauri-plugin-global-shortcut 注册全局快捷键
+#[tauri::command]
+async fn register_global_shortcut(handle: tauri::AppHandle, shortcut: String) -> Result<(), String> {
+    // 注册全局快捷键，例如 "Alt+T"
+    // 当快捷键被按下时，触发 Rust 后端逻辑：
+    // 1. 模拟 Ctrl+C 将选中文本复制到剪贴板。
+    // 2. 读取剪贴板内容。
+    // 3. 调用 Tauri API 显示悬浮窗口并传递文本。
+    // 注意：模拟按键操作可能需要特定的权限和平台适配。
+    // 也可以考虑只监听快捷键，然后前端调用 `invoke("read_clipboard")` 获取内容。
+    Ok(())
+}
 ```
 
 ### 3. 悬浮窗口定位
-```typescript
-// 获取选中文本位置并计算悬浮窗口位置
-async function getFloatingWindowPosition() {
-  const selection = window.getSelection()
-  const range = selection.getRangeAt(0)
-  const rect = range.getBoundingClientRect()
+```rust
+// 通过 Tauri 后端获取鼠标当前位置并计算悬浮窗口位置
+use tauri::{LogicalPosition, Manager, Monitor};
 
-  return {
-    x: rect.left + rect.width / 2 - 150,
-    y: rect.bottom + 10
-  }
+#[tauri::command]
+async fn get_floating_window_position(app: tauri::AppHandle) -> Result<(f64, f64), String> {
+    let cursor_position = app.get_window("floating")
+        .and_then(|w| w.current_monitor().ok())
+        .flatten()
+        .and_then(|monitor: Monitor| monitor.position().to_logical(monitor.scale_factor()).to_physical(monitor.scale_factor()).into())
+        .ok_or_else(|| "无法获取鼠标位置".to_string())?;
+
+    // 计算悬浮窗口的显示位置，例如在鼠标下方偏移一定距离
+    let window_width = 300.0; // 假设悬浮窗口宽度
+    let window_height = 100.0; // 假设悬浮窗口高度
+
+    Ok((cursor_position.x - window_width / 2.0, cursor_position.y + 20.0))
 }
 ```
 

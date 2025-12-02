@@ -13,8 +13,38 @@
     "windows": [
       {
         "title": "ace-translator",
+        "width": 1000,
+        "height": 700,
+        "resizable": true,
+        "minimizable": true,
+        "fullscreen": false
+      },
+      {
+        "label": "floating",
+        "title": "Floating Translator",
+        "width": 400,
+        "height": 150,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "alwaysOnTop": true,
+        "visible": false,
+        "minimizable": false,
+        "maximizable": false,
+        "url": "index.html#/floating"
+      },
+      {
+        "label": "settings",
+        "title": "Settings",
         "width": 800,
-        "height": 600
+        "height": 600,
+        "resizable": false,
+        "minimizable": false,
+        "fullscreen": false,
+        "visible": false,
+        "url": "index.html#/settings"
       }
     ],
     "security": {
