@@ -44,9 +44,9 @@ pub fn run() {
 
             // 3. Initialize System Tray
             use tauri::menu::{MenuBuilder, MenuItemBuilder};
-            let show = MenuItemBuilder::new("Show Translator").id("show").build(app)?;
-            let settings = MenuItemBuilder::new("Settings").id("settings").build(app)?;
-            let quit = MenuItemBuilder::new("Quit").id("quit").build(app)?;
+            let show = MenuItemBuilder::new("打开主窗口").id("show").build(app)?;
+            let settings = MenuItemBuilder::new("打开设置").id("settings").build(app)?;
+            let quit = MenuItemBuilder::new("退出").id("quit").build(app)?;
             let menu = MenuBuilder::new(app).items(&[&show, &settings, &quit]).build()?;
 
             // Load and decode icon
@@ -61,7 +61,7 @@ pub fn run() {
                 .icon(icon)
                 .menu(&menu)
                 .on_menu_event(|app, event| {
-                     match event.id().as_ref() {
+                    match event.id().as_ref() {
                         "quit" => app.exit(0),
                         "show" => {
                             if let Some(window) = app.get_webview_window("main") {
@@ -76,6 +76,16 @@ pub fn run() {
                             }
                         }
                         _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let tauri::tray::TrayIconEvent::Click { button, .. } = event {
+                        if button == tauri::tray::MouseButton::Left {
+                            if let Some(window) = tray.app_handle().get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
                     }
                 })
                 .build(app)?;
