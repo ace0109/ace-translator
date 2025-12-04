@@ -85,31 +85,30 @@ pub fn start_listener(app: tauri::AppHandle) {
                 let app_handle = app.clone();
                 let state = state.clone();
                 move |_proxy, type_, event| {
+                    let mut guard = state.lock().unwrap(); // Lock for the entire event processing.
+
                     match type_ {
                         CGEventType::KeyDown => {
                             let key_code = event.get_integer_value_field(9) as CGKeyCode; // kCGKeyboardEventKeycode = 9
-                            let flags = event.get_flags();
-                            let cmd_down = flags.contains(CGEventFlags::CGEventFlagCommand);
-                            let ctrl_down = flags.contains(CGEventFlags::CGEventFlagControl);
                             
-                            println!("[hotkey] KeyDown: code={}, cmd={}, ctrl={}", key_code, cmd_down, ctrl_down);
+                            // Use tracked modifier state
+                            // println!("[hotkey] KeyDown: code={}, ctrl_state={}, meta_state={}", key_code, guard.ctrl_down, guard.meta_down);
 
                             if key_code == KEY_C {
-                                if cmd_down || ctrl_down {
-                                    let mut guard = state.lock().unwrap();
+                                if guard.ctrl_down || guard.meta_down { // Use tracked state
                                     let now = Instant::now();
                                     
                                     let is_double = guard.last_c_press.map_or(false, |prev| {
                                         let diff = now.duration_since(prev);
-                                        println!("[hotkey] Time since last press: {:?}", diff);
+                                        // println!("[hotkey] Time since last press: {:?}", diff);
                                         diff <= Duration::from_millis(450)
                                     });
 
                                     if !is_double {
-                                        println!("[hotkey] First Cmd+C detected");
+                                        // println!("[hotkey] First Cmd+C detected");
                                         guard.last_c_press = Some(now);
                                     } else {
-                                        println!("[hotkey] Second Cmd+C detected! Triggering...");
+                                        // println!("[hotkey] Second Cmd+C detected! Triggering...");
                                         guard.last_c_press = None; 
                                         
                                         let app_clone = app_handle.clone();
@@ -118,6 +117,17 @@ pub fn start_listener(app: tauri::AppHandle) {
                                         });
                                     }
                                 }
+                            }
+                        }
+                        CGEventType::FlagsChanged => {
+                            let flags = event.get_flags();
+                            guard.ctrl_down = flags.contains(CGEventFlags::CGEventFlagControl);
+                            guard.meta_down = flags.contains(CGEventFlags::CGEventFlagCommand);
+                            // println!("[hotkey] FlagsChanged: ctrl={}, meta={}", guard.ctrl_down, guard.meta_down);
+                            // Also reset double tap state if modifiers are released
+                            if !guard.ctrl_down && !guard.meta_down {
+                                guard.last_c_press = None;
+                                // println!("[hotkey] Modifiers released, reset double tap state.");
                             }
                         }
                         _ => {}
