@@ -1,0 +1,28 @@
+$:
+  tag_push:
+    # 上传二进制包到 release 附件
+    - docker:
+        build: Dockerfile
+      stages:
+        - name: changelog
+          image: cnbcool/changelog
+          exports:
+            latestChangeLog: LATEST_CHANGE_LOG
+        - name: create release
+          type: git:release
+          options:
+            description: ${LATEST_CHANGE_LOG}
+        - name: 安装依赖
+          script: pnpm install --frozen-lockfile
+        - name: 构建程序
+          script: pnpm tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc
+        - name: release 上传附件
+          image: cnbcool/attachments:latest
+          settings:
+            attachments:
+              - src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+              - src-tauri/target/x86_64-pc-windows-msvc/release/*.exe
+          exports:
+            FILES: FILES
+        - name: 输出附件
+          script: echo $FILES
