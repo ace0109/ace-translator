@@ -1,11 +1,8 @@
 <template>
-  <div class="flex min-h-screen flex-col gap-6 p-6">
+  <div class="flex min-h-screen flex-col gap-4 p-4">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h1 class="text-xl font-semibold leading-tight">Ace Translator</h1>
-        <p class="text-sm text-muted-foreground">
-          自动检测源语言，缓存常用目标语言，快速切换无需重复请求
-        </p>
       </div>
       <Button variant="outline" class="gap-2" @click="openSettingsWindow">
         <Settings2 class="h-4 w-4" />
