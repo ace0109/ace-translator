@@ -18,12 +18,12 @@ onMounted(async () => {
     const settings: any = await invoke('get_settings');
     if (settings) {
       settingsStore.setApiKey(settings.api_key);
-      settingsStore.setTheme(settings.theme);
+      settingsStore.setTheme(settings.theme || 'dark');
       settingsStore.setCommonTargetLanguages(settings.common_target_languages || defaultCommonTargets);
       translationStore.setTargetLang(settings.target_language || 'zh-CN');
       
       // Apply dark mode class to html element
-      if (settings.theme === 'dark') {
+      if ((settings.theme || 'dark') === 'dark') {
         document.documentElement.classList.add('dark');
       } else {
         document.documentElement.classList.remove('dark');
@@ -38,12 +38,12 @@ onMounted(async () => {
     const s = event.payload;
     if (s) {
       settingsStore.setApiKey(s.api_key);
-      settingsStore.setTheme(s.theme);
+      settingsStore.setTheme(s.theme || 'dark');
       settingsStore.setCommonTargetLanguages(s.common_target_languages || defaultCommonTargets);
       translationStore.setTargetLang(s.target_language || 'zh-CN');
       
       // Sync dark mode class
-      if (s.theme === 'dark') {
+      if ((s.theme || 'dark') === 'dark') {
         document.documentElement.classList.add('dark');
       } else {
         document.documentElement.classList.remove('dark');

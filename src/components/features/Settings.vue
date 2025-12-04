@@ -9,12 +9,22 @@
         <CardContent class="space-y-4">
           <div class="space-y-2">
             <Label for="apiKey">AI API Key</Label>
-            <Input
-              id="apiKey"
-              v-model="settingsForm.apiKey"
-              type="password"
-              placeholder="输入 API Key"
-            />
+            <div class="flex gap-2">
+              <Input
+                id="apiKey"
+                v-model="settingsForm.apiKey"
+                type="password"
+                placeholder="输入 API Key"
+              />
+              <Button
+                :disabled="isSaving || !settingsForm.apiKey.trim()"
+                class="gap-2"
+                @click="saveApiKey"
+              >
+                <Loader2 v-if="isSaving" class="h-4 w-4 animate-spin" />
+                <span>{{ isSaving ? '保存中...' : '保存 API Key' }}</span>
+              </Button>
+            </div>
           </div>
           <div class="space-y-2">
             <Label for="targetLanguage">默认目标语言</Label>
@@ -22,6 +32,7 @@
               id="targetLanguage"
               v-model="settingsForm.targetLanguage"
               placeholder="选择默认目标语言"
+              @update:modelValue="saveTargetLanguage"
             />
           </div>
           <div class="space-y-2">
@@ -30,14 +41,14 @@
               <Button
                 :variant="settingsForm.theme === 'light' ? 'default' : 'outline'"
                 size="sm"
-                @click="settingsForm.theme = 'light'"
+                @click="updateTheme('light')"
               >
                 浅色
               </Button>
               <Button
                 :variant="settingsForm.theme === 'dark' ? 'default' : 'outline'"
                 size="sm"
-                @click="settingsForm.theme = 'dark'"
+                @click="updateTheme('dark')"
               >
                 深色
               </Button>
@@ -68,16 +79,6 @@
             </div>
           </div>
         </CardContent>
-        <CardFooter class="justify-end gap-2">
-          <Button
-            :disabled="isSaving"
-            class="gap-2"
-            @click="saveSettings"
-          >
-            <Loader2 v-if="isSaving" class="h-4 w-4 animate-spin" />
-            <span>{{ isSaving ? '保存中...' : '保存设置' }}</span>
-          </Button>
-        </CardFooter>
       </Card>
 
       <Card>
@@ -231,11 +232,6 @@ const saveSettings = async () => {
     showToast('当前不在 Tauri 环境，无法保存', 'error')
     return
   }
-  if (!settingsForm.value.apiKey.trim()) {
-    showToast('请填写 API Key 后再保存', 'error')
-    return
-  }
-
   isSaving.value = true
   try {
     await invoke('save_settings', {
@@ -259,6 +255,46 @@ const saveSettings = async () => {
   }
 }
 
+const saveApiKey = async () => {
+  if (!isTauriEnv()) {
+    showToast('当前不在 Tauri 环境，无法保存', 'error')
+    return
+  }
+  if (!settingsForm.value.apiKey.trim()) {
+    showToast('请填写 API Key 后再保存', 'error')
+    return
+  }
+  isSaving.value = true
+  try {
+    await invoke('save_settings', {
+      settings: {
+        api_key: settingsForm.value.apiKey,
+        target_language: settingsForm.value.targetLanguage,
+        theme: settingsForm.value.theme,
+        common_target_languages: settingsForm.value.commonTargetLanguages,
+      },
+    })
+    settingsStore.setApiKey(settingsForm.value.apiKey)
+    showToast('API Key 已保存', 'info')
+  } catch (error: any) {
+    const errMsg = error?.message || String(error)
+    showToast(`保存失败：${errMsg}`, 'error')
+  } finally {
+    isSaving.value = false
+  }
+}
+
+const saveTargetLanguage = async (lang: string) => {
+  settingsForm.value.targetLanguage = lang
+  await saveSettings()
+}
+
+const updateTheme = async (theme: 'light' | 'dark') => {
+  settingsForm.value.theme = theme
+  applyThemeClass(theme)
+  await saveSettings()
+}
+
 onMounted(() => {
   loadSettings()
   loadCacheStats()
@@ -275,10 +311,12 @@ const toggleCommonTarget = (lang: string) => {
     settingsForm.value.commonTargetLanguages = settingsForm.value.commonTargetLanguages.filter((l) => l !== lang)
   } else {
     if (settingsForm.value.commonTargetLanguages.length >= maxCommonTargets) {
+      showToast(`最多选择 ${maxCommonTargets} 个常用语言`, 'error')
       return
     }
     settingsForm.value.commonTargetLanguages = [...settingsForm.value.commonTargetLanguages, lang]
   }
+  saveSettings()
 }
 
 const commonTargets = () => {

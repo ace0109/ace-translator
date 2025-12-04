@@ -54,7 +54,7 @@ pub async fn save_settings(app: AppHandle, state: State<'_, AppState>, settings:
 #[tauri::command]
 pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
     let encrypted_key = get_val(&state.db, "api_key").await.unwrap_or_default();
-    let theme = get_val(&state.db, "theme").await.unwrap_or_else(|| "light".to_string());
+    let theme = get_val(&state.db, "theme").await.unwrap_or_else(|| "dark".to_string());
     let target_language = get_val(&state.db, "target_language").await.unwrap_or_else(|| "zh-CN".to_string());
     let common_target_languages = get_val(&state.db, "common_target_languages").await
         .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
