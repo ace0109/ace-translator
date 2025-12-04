@@ -19,7 +19,7 @@ pub fn simulate_copy() -> Result<(), String> {
     
     // Click C
     // Note: Key::C matches 'c'
-    enigo.key(Key::C, Direction::Click).map_err(|e| e.to_string())?;
+    enigo.key(Key::Unicode('c'), Direction::Click).map_err(|e| e.to_string())?;
     
     // Release Modifier
     enigo.key(modifier, Direction::Release).map_err(|e| e.to_string())?;
