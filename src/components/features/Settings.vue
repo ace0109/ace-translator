@@ -2,9 +2,14 @@
   <div class="p-6">
     <div class="mx-auto flex max-w-3xl flex-col gap-6">
       <Card>
-        <CardHeader>
-          <CardTitle>基础信息</CardTitle>
-          <CardDescription>确保 API Key 已填写，否则无法调用翻译服务。</CardDescription>
+        <CardHeader class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>基础信息</CardTitle>
+            <CardDescription>确保 API Key 已填写，否则无法调用翻译服务。</CardDescription>
+          </div>
+          <Button variant="outline" :disabled="isSaving" @click="resetDefaults">
+            恢复默认设置
+          </Button>
         </CardHeader>
         <CardContent class="space-y-4">
           <div class="space-y-2">
@@ -79,11 +84,11 @@
             </div>
           </div>
         </CardContent>
-      </Card>
+    </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>API 连通性测试</CardTitle>
+    <Card>
+      <CardHeader>
+        <CardTitle>API 连通性测试</CardTitle>
           <CardDescription>查看发送给 AI 的参数和响应结果，便于排查。</CardDescription>
         </CardHeader>
         <CardContent class="space-y-3">
@@ -158,7 +163,7 @@ const settingsStore = useSettingsStore()
 const settingsForm = ref<SettingsForm>({
   apiKey: '',
   targetLanguage: 'zh-CN',
-  theme: 'light',
+  theme: 'dark',
   commonTargetLanguages: defaultCommonTargets.slice(),
 })
 
@@ -212,7 +217,7 @@ const loadSettings = async () => {
     const loadedSettings: any = await invoke('get_settings')
     settingsForm.value.apiKey = loadedSettings.api_key || ''
     settingsForm.value.targetLanguage = loadedSettings.target_language || 'zh-CN'
-    settingsForm.value.theme = loadedSettings.theme || 'light'
+    settingsForm.value.theme = loadedSettings.theme || 'dark'
     settingsForm.value.commonTargetLanguages =
       loadedSettings.common_target_languages?.slice(0, maxCommonTargets) ||
       defaultCommonTargets.slice()
@@ -324,6 +329,18 @@ const commonTargets = () => {
     settingsForm.value.commonTargetLanguages.slice(0, maxCommonTargets) ??
     defaultCommonTargets.slice()
   )
+}
+
+const resetDefaults = async () => {
+  settingsForm.value = {
+    apiKey: '',
+    targetLanguage: 'zh-CN',
+    theme: 'dark',
+    commonTargetLanguages: defaultCommonTargets.slice(0, maxCommonTargets),
+  }
+  applyThemeClass(settingsForm.value.theme)
+  await saveSettings()
+  showToast('已恢复默认设置', 'info')
 }
 
 const runApiTest = async () => {

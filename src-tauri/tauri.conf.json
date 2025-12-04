@@ -24,7 +24,7 @@
       {
         "label": "floating",
         "title": "Floating Translator",
-        "width": 400,
+        "width": 500,
         "height": 500,
         "alwaysOnTop": true,
         "resizable": false,
@@ -39,7 +39,7 @@
         "label": "settings",
         "title": "Settings",
         "width": 800,
-        "height": 600,
+        "height": 800,
         "resizable": false,
         "minimizable": false,
         "fullscreen": false,

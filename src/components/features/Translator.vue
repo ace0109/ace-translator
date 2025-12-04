@@ -86,6 +86,22 @@
         </div>
       </div>
     </transition>
+    <!-- API Key 提示对话框 -->
+    <transition name="fade">
+      <div
+        v-if="showApiKeyPrompt"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm"
+      >
+        <div class="w-[320px] rounded-lg border bg-card p-4 shadow-lg">
+          <h3 class="text-base font-semibold text-foreground">需要设置 API Key</h3>
+          <p class="mt-2 text-sm text-muted-foreground">请先前往设置页面填写并保存 API Key 后再进行翻译。</p>
+          <div class="mt-4 flex justify-end gap-2">
+            <Button variant="outline" @click="showApiKeyPrompt = false">稍后</Button>
+            <Button @click="goToSettings">前往设置</Button>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -116,6 +132,8 @@ const langDisplay = computed(() => {
   return found ? found.label : detectedLang.value
 })
 
+const showApiKeyPrompt = ref(false)
+
 const ensureCommonTargets = () => {
   const list = settingsStore.commonTargetLanguages && settingsStore.commonTargetLanguages.length > 0
     ? settingsStore.commonTargetLanguages
@@ -123,7 +141,17 @@ const ensureCommonTargets = () => {
   return Array.from(new Set(list)).slice(0, 5)
 }
 
+const goToSettings = () => {
+  showApiKeyPrompt.value = false
+  openSettingsWindow()
+}
+
 const callTranslate = async (targets: string[]) => {
+  if (!settingsStore.apiKey?.trim()) {
+    showToast('请先前往设置中配置 API Key', 'error')
+    showApiKeyPrompt.value = true
+    return null
+  }
   if (!sourceText.value.trim()) {
     showToast('请输入要翻译的文本', 'error')
     return null

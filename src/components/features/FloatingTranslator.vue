@@ -103,6 +103,33 @@
         </div>
       </div>
     </transition>
+
+    <!-- API Key 提示对话框 -->
+    <transition name="fade">
+      <div
+        v-if="showApiKeyPrompt"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur"
+      >
+        <div class="w-[320px] rounded-lg border bg-card p-4 shadow-lg">
+          <h3 class="text-base font-semibold text-foreground">需要设置 API Key</h3>
+          <p class="mt-2 text-sm text-muted-foreground">请先前往设置页面填写并保存 API Key 后再翻译。</p>
+          <div class="mt-4 flex justify-end gap-2">
+            <button
+              class="rounded border px-3 py-1 text-sm text-muted-foreground transition hover:bg-muted/60"
+              @click="dismissApiPrompt"
+            >
+              稍后
+            </button>
+            <button
+              class="rounded bg-primary px-3 py-1 text-sm text-primary-foreground transition hover:brightness-110"
+              @click="goToSettings"
+            >
+              前往设置
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -169,6 +196,36 @@ const detectedLabel = computed(() => {
   return langLabel(detectedLang.value)
 })
 
+const showApiKeyPrompt = ref(false)
+
+const ensureApiKey = async () => {
+  if (settingsStore.apiKey?.trim()) return true
+  showToast('请先在设置中配置 API Key', 'error')
+  showApiKeyPrompt.value = true
+  return false
+}
+
+const goToSettings = async () => {
+  showApiKeyPrompt.value = false
+  try {
+    await invoke('show_settings_window')
+  } catch (error: any) {
+    const errMsg = error?.message || String(error)
+    showToast(`打开设置窗口失败：${errMsg}`, 'error')
+  } finally {
+    try {
+      await invoke('hide_window')
+    } catch (_) {}
+  }
+}
+
+const dismissApiPrompt = async () => {
+  showApiKeyPrompt.value = false
+  try {
+    await invoke('hide_window')
+  } catch (_) {}
+}
+
 const copyText = async (text: string) => {
   try {
     await navigator.clipboard.writeText(text)
@@ -185,6 +242,9 @@ onMounted(async () => {
   unlisten = await listen<string>('floating-show', async (event) => {
     if (isLoading.value) {
       showToast('正在翻译，请先等待或取消当前任务', 'info')
+      return
+    }
+    if (!(await ensureApiKey())) {
       return
     }
 
