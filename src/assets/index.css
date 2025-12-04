@@ -74,3 +74,12 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* 隐藏滚动条（仍可滚动） */
+* {
+  scrollbar-width: none;
+}
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
