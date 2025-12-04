@@ -1,154 +1,125 @@
 <template>
-  <div class="floating-translator-container">
-    <n-card :bordered="false" size="small" class="floating-card">
-      <div class="content">
-        <LoadingSpinner v-if="isLoading" :show="isLoading" />
-        <n-text v-else class="text">{{ translatedText || '等待翻译…' }}</n-text>
+  <div class="flex h-full w-full items-center justify-center bg-background text-foreground">
+    <Card class="relative w-full max-w-xl overflow-hidden border bg-gradient-to-br from-background via-background to-muted/40 shadow-lg">
+      <CardContent class="space-y-4 pt-6">
+        <div class="rounded-md border bg-muted/40 px-3 py-4">
+          <div class="flex items-center justify-between text-xs text-muted-foreground">
+            <span>检测语言：{{ detectedLang || '...' }}</span>
+            <span>目标：{{ targetListDisplay }}</span>
+          </div>
+          <div class="mt-3 grid gap-2">
+            <div
+              v-for="(text, lang) in filteredTranslations"
+              :key="lang"
+              class="rounded-md border border-dashed bg-background/80 px-3 py-2"
+            >
+              <div class="mb-1 text-xs font-semibold text-muted-foreground">{{ lang }}</div>
+              <p class="text-sm leading-relaxed text-foreground/90">{{ text }}</p>
+            </div>
+            <div
+              v-if="isLoading"
+              class="flex items-center justify-center rounded-md border border-dashed bg-background/60 px-3 py-4"
+            >
+              <LoadingSpinner />
+            </div>
+            <p v-if="!isLoading && !Object.keys(filteredTranslations).length" class="text-sm text-muted-foreground">
+              等待翻译中...
+            </p>
+          </div>
+        </div>
+        <div v-if="sourcePreview" class="rounded-md border bg-muted/30 p-3 text-left">
+          <p class="text-xs font-medium uppercase tracking-wide text-muted-foreground">原文</p>
+          <p class="mt-1 text-sm text-foreground/85">{{ sourcePreview }}</p>
+        </div>
+      </CardContent>
+      <div class="absolute right-3 top-3">
+        <Button
+          variant="secondary"
+          size="icon"
+          class="h-8 w-8 rounded-full shadow-sm"
+          :disabled="isLoading"
+          @click="closeFloatingWindow"
+        >
+          <X class="h-4 w-4" />
+        </Button>
       </div>
-      <div class="footer" v-if="sourcePreview">
-        <n-text depth="3" class="preview-label">原文</n-text>
-        <n-text depth="2" class="preview">{{ sourcePreview }}</n-text>
-      </div>
-      <n-button
-        v-if="!isLoading && translatedText"
-        class="close-button"
-        size="tiny"
-        circle
-        @click="closeFloatingWindow"
-      >
-        <n-icon><CloseCircle /></n-icon>
-      </n-button>
-    </n-card>
+    </Card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
-import { NCard, NText, NButton, NIcon, useMessage } from "naive-ui";
-import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
-import LoadingSpinner from "../common/LoadingSpinner.vue";
-import { CloseCircle } from "@vicons/ionicons5";
+import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { listen } from '@tauri-apps/api/event'
+import { invoke } from '@tauri-apps/api/core'
+import { X } from 'lucide-vue-next'
+import LoadingSpinner from '../common/LoadingSpinner.vue'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { useSettingsStore } from '@/stores/settings'
+import { defaultCommonTargets } from '@/constants/languages'
 
-const translatedText = ref("");
-const sourcePreview = ref("");
-const isLoading = ref(false);
-const message = useMessage();
+const translations = ref<Record<string, string>>({})
+const sourcePreview = ref('')
+const isLoading = ref(false)
+const detectedLang = ref('')
+
+const settingsStore = useSettingsStore()
+
+const targetList = () => {
+  const list = settingsStore.commonTargetLanguages && settingsStore.commonTargetLanguages.length > 0
+    ? settingsStore.commonTargetLanguages
+    : defaultCommonTargets
+  return Array.from(new Set(list)).slice(0, 5)
+}
+
+const filteredTranslations = computed(() => {
+  const res: Record<string, string> = {}
+  Object.entries(translations.value).forEach(([lang, text]) => {
+    if (lang === detectedLang.value) return
+    res[lang] = text
+  })
+  return res
+})
+
+const targetListDisplay = computed(() => targetList().join(', '))
 
 let unlisten: (() => void) | undefined;
 
 onMounted(async () => {
-  console.log("[floating] mounted, waiting for events");
-  unlisten = await listen<string>("floating-show", async (event) => {
-    console.log("[floating] event received", event.payload);
-    sourcePreview.value = event.payload?.slice(0, 120) || "";
-    translatedText.value = "";
-    isLoading.value = true;
+  unlisten = await listen<string>('floating-show', async (event) => {
+    sourcePreview.value = event.payload?.slice(0, 120) || ''
+    translations.value = {}
+    detectedLang.value = ''
+    isLoading.value = true
 
     try {
-      const settings = await invoke<{ target_language: string }>("get_settings");
-      const targetLang = settings?.target_language || "zh-CN";
-      console.log("[floating] invoke translate_text", { targetLang, sourceLen: event.payload.length });
-      const result: string = await invoke("translate_text", {
+      const targets = targetList()
+      const result: any = await invoke('translate_text', {
         text: event.payload,
-        sourceLang: "auto",
-        targetLang,
-      });
-      console.log("[floating] translate_text result len", result.length);
-      translatedText.value = result;
+        targetLangs: targets,
+      })
+      detectedLang.value =
+        result?.detected_source_lang ||
+        result?.detectedLang ||
+        result?.detected_language ||
+        ''
+      translations.value = (result?.translations as Record<string, string>) || {}
     } catch (error: any) {
-      const errMsg = error?.message || String(error);
-      translatedText.value = `翻译失败: ${errMsg}`;
-      message.error(`悬浮窗翻译失败: ${errMsg}`);
+      const errMsg = error?.message || String(error)
+      translations.value = { error: `翻译失败：${errMsg}` }
     } finally {
-      isLoading.value = false;
+      isLoading.value = false
     }
-  });
-});
+  })
+})
 
 onUnmounted(() => {
   if (unlisten) {
-    unlisten();
+    unlisten()
   }
-});
+})
 
-async function closeFloatingWindow() {
-  await invoke("hide_window");
+const closeFloatingWindow = async () => {
+  await invoke('hide_window')
 }
 </script>
-
-<style scoped>
-.floating-translator-container {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.floating-card {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  padding: 10px;
-  border-radius: 10px;
-  position: relative;
-  background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.08), transparent),
-    radial-gradient(circle at 80% 30%, rgba(255, 255, 255, 0.06), transparent),
-    #0f172a;
-  color: white;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
-}
-
-.content {
-  flex-grow: 1;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  padding: 0 12px;
-  word-break: break-all;
-  overflow: hidden;
-  font-size: 14px;
-}
-
-.text {
-  color: #e2e8f0;
-}
-
-.footer {
-  width: 100%;
-  padding-top: 6px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.preview-label {
-  font-size: 12px;
-  display: block;
-}
-
-.preview {
-  display: block;
-  font-size: 12px;
-  margin-top: 2px;
-  color: rgba(226, 232, 240, 0.85);
-}
-
-.close-button {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  background-color: transparent;
-  color: white;
-  border: none;
-  opacity: 0.7;
-}
-
-.close-button:hover {
-  opacity: 1;
-  background-color: rgba(255, 255, 255, 0.12);
-}
-</style>

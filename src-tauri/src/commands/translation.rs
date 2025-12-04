@@ -2,39 +2,28 @@ use crate::services::zhipu;
 use crate::AppState;
 use tauri::{AppHandle, State};
 use crate::services::encryption::decrypt_api_key;
+use serde_json::Value;
 
 #[tauri::command]
 pub async fn translate_text(
     _app: AppHandle,
     state: State<'_, AppState>,
     text: String,
-    source_lang: String,
-    target_lang: String,
-) -> Result<String, String> {
+    // 目标语言列表（前端已去重&限制长度，后端再兜底限制）
+    #[allow(non_snake_case)]
+    targetLangs: Vec<String>,
+) -> Result<Value, String> {
     println!(
-        "[translate_text] start | source_lang={} target_lang={} text_len={}",
-        source_lang,
-        target_lang,
+        "[translate_text] start | target_langs={:?} text_len={}",
+        targetLangs,
         text.len()
     );
 
-    // 1) 缓存查询
-    let cached_translation: Option<String> = sqlx::query_scalar(
-        "SELECT translated_text FROM translation_history WHERE source_text = ? AND source_lang = ? AND target_lang = ?"
-    )
-    .bind(&text)
-    .bind(&source_lang)
-    .bind(&target_lang)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    if let Some(translation) = cached_translation {
-        println!("[translate_text] cache hit, returning cached result");
-        return Ok(translation);
+    if text.trim().is_empty() {
+        return Err("Text is empty".to_string());
     }
 
-    // 2) 取 API Key
+    // 拉取 API Key
     let encrypted_key: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = 'api_key'")
         .fetch_optional(&state.db)
         .await
@@ -46,24 +35,18 @@ pub async fn translate_text(
         return Err("API Key not set. Please configure it in settings.".to_string());
     };
 
-    // 3) 调用 API
-    let translated = zhipu::call_zhipu_api(&api_key, &text, &source_lang, &target_lang).await?;
-    println!(
-        "[translate_text] api done | translated_len={} preview=\"{}\"",
-        translated.len(),
-        translated.chars().take(60).collect::<String>()
-    );
+    // 最多 5 个目标语言，去重
+    let mut cleaned = targetLangs.clone();
+    cleaned.sort();
+    cleaned.dedup();
+    if cleaned.len() > 5 {
+        cleaned.truncate(5);
+    }
+    if cleaned.is_empty() {
+        cleaned.push("zh-CN".to_string());
+    }
 
-    // 4) 写入历史
-    let _ = sqlx::query(
-        "INSERT INTO translation_history (source_text, translated_text, source_lang, target_lang) VALUES (?, ?, ?, ?)"
-    )
-    .bind(&text)
-    .bind(&translated)
-    .bind(&source_lang)
-    .bind(&target_lang)
-    .execute(&state.db)
-    .await;
+    let result = zhipu::call_zhipu_api(&api_key, &text, "auto", &cleaned).await?;
 
-    Ok(translated)
+    Ok(result)
 }

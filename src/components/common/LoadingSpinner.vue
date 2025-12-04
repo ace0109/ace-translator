@@ -1,26 +1,9 @@
 <template>
-  <div class="loading-spinner">
-    <n-spin :show="show" size="large" />
+  <div class="flex h-full w-full items-center justify-center">
+    <Loader2 class="h-6 w-6 animate-spin text-muted-foreground" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { NSpin } from 'naive-ui';
-
-interface Props {
-  show: boolean;
-}
-
-defineProps<Props>();
+import { Loader2 } from 'lucide-vue-next'
 </script>
-
-<style scoped>
-.loading-spinner {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  /* 确保占据足够的空间以居中显示 */
-  width: 100%;
-  height: 100%;
-}
-</style>

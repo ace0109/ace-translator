@@ -8,6 +8,7 @@ pub struct AppSettings {
     pub api_key: String,
     pub theme: String,
     pub target_language: String,
+    pub common_target_languages: Vec<String>,
 }
 
 // Helper to get value from DB
@@ -25,10 +26,14 @@ pub async fn save_settings(app: AppHandle, state: State<'_, AppState>, settings:
     let encrypted_key = encrypt_api_key(&settings.api_key)?;
 
     // Save to DB
+    let common_targets_json = serde_json::to_string(&settings.common_target_languages)
+        .map_err(|e| e.to_string())?;
+
     let queries = [
         ("api_key", encrypted_key),
         ("theme", settings.theme.clone()),
         ("target_language", settings.target_language.clone()),
+        ("common_target_languages", common_targets_json),
     ];
 
     for (key, value) in queries {
@@ -51,6 +56,9 @@ pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, Str
     let encrypted_key = get_val(&state.db, "api_key").await.unwrap_or_default();
     let theme = get_val(&state.db, "theme").await.unwrap_or_else(|| "light".to_string());
     let target_language = get_val(&state.db, "target_language").await.unwrap_or_else(|| "zh-CN".to_string());
+    let common_target_languages = get_val(&state.db, "common_target_languages").await
+        .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
+        .unwrap_or_else(|| vec!["zh-CN".to_string(), "en".to_string(), "ja".to_string(), "ko".to_string()]);
 
     let api_key = if !encrypted_key.is_empty() {
         decrypt_api_key(&encrypted_key).unwrap_or_default()
@@ -62,5 +70,6 @@ pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, Str
         api_key,
         theme,
         target_language,
+        common_target_languages,
     })
 }

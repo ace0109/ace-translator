@@ -1,9 +1,10 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
+use crate::config::prompts;
 
 const API_URL: &str = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
-const DEFAULT_MODEL: &str = "glm-4-flash"; 
+const DEFAULT_MODEL: &str = "GLM-4.6";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ChatResponse {
@@ -24,25 +25,29 @@ pub async fn call_zhipu_api(
     api_key: &str,
     text: &str,
     source_lang: &str,
-    target_lang: &str,
-) -> Result<String, String> {
+    target_langs: &[String],
+) -> Result<Value, String> {
     println!(
-        "[zhipu] request | model={} source_lang={} target_lang={} text_len={}",
+        "[zhipu] request | model={} source_lang={} target_langs={:?} text_len={}",
         DEFAULT_MODEL,
         source_lang,
-        target_lang,
+        target_langs,
         text.len()
     );
 
     let client = Client::new();
 
-    let system_prompt = "你是一个专业的翻译助手。请直接将用户提供的文本翻译成目标语言，不要解释，不要添加任何额外内容。如果源语言未指定(auto)，请自动检测。";
-    
+    let system_prompt = prompts::SYSTEM_PROMPT;
+
+    let targets_str = target_langs.join(", ");
+
     let user_prompt = format!(
-        "请将以下文本从 {} 翻译成 {}:\n\n{}",
-        if source_lang == "auto" { "自动检测语言" } else { source_lang },
-        target_lang,
-        text
+        "源语言：{}\n目标语言列表：[{targets}]\n\n文本：{text}\n\n语言代码列表：{codes}\n输出要求：{output}\n仅返回 JSON，不要额外解释。",
+        if source_lang == "auto" { "auto(请自行检测)" } else { source_lang },
+        targets = targets_str,
+        text = text,
+        codes = prompts::LANGUAGE_CODES,
+        output = prompts::OUTPUT_FORMAT,
     );
 
     let payload = json!({
@@ -75,8 +80,45 @@ pub async fn call_zhipu_api(
         .map_err(|e| format!("Failed to parse response: {}", e))?;
 
     if let Some(choice) = chat_response.choices.first() {
-        Ok(choice.message.content.clone())
-    } else {
-        Err("No translation result returned".to_string())
+        let content = choice.message.content.clone();
+
+        // 优先解析 JSON，若失败尝试从代码块中提取
+        if let Some(val) = try_parse_json(&content) {
+            return Ok(val);
+        }
+
+        // 兜底：返回原始字符串
+        return Ok(json!({ "detected_source_lang": source_lang, "translations": {}, "raw": content }));
     }
+
+    Err("No translation result returned".to_string())
+}
+
+fn try_parse_json(content: &str) -> Option<Value> {
+    // 1) 直接尝试
+    if let Ok(val) = serde_json::from_str::<Value>(content) {
+        return Some(val);
+    }
+
+    // 2) 提取 ```json ... ``` 或 ``` ... ```
+    let fence_variants = ["```json", "```"];
+    for fence in fence_variants {
+        if let Some(start) = content.find(fence) {
+            let rest = &content[start + fence.len()..];
+            if let Some(end) = rest.find("```") {
+                let block = &rest[..end];
+                if let Ok(val) = serde_json::from_str::<Value>(block) {
+                    return Some(val);
+                }
+            }
+        }
+    }
+
+    // 3) 去除反引号后再试
+    let stripped = content.trim_matches('`').trim();
+    if let Ok(val) = serde_json::from_str::<Value>(stripped) {
+        return Some(val);
+    }
+
+    None
 }

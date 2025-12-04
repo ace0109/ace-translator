@@ -1,61 +1,10 @@
 import { createApp } from "vue";
+import "./assets/index.css";
 import App from "./App.vue";
 import { createPinia } from "pinia";
 import { createRouter, createWebHashHistory } from "vue-router";
 
-// Naive UI
-import {
-  create,
-  NButton,
-  NInput,
-  NConfigProvider,
-  NMessageProvider,
-  NLayout,
-  NLayoutSider,
-  NLayoutHeader,
-  NLayoutContent,
-  NMenu,
-  NText,
-  NIcon,
-  NGrid,
-  NGi,
-  NCard,
-  NSpace,
-  NForm,
-  NFormItem,
-  NRadioGroup,
-  NRadio,
-  NSelect,
-  NSpin,
-} from "naive-ui";
-
 const pinia = createPinia();
-
-const naive = create({
-  components: [
-    NButton,
-    NInput,
-    NConfigProvider,
-    NMessageProvider,
-    NLayout,
-    NLayoutSider,
-    NLayoutHeader,
-    NLayoutContent,
-    NMenu,
-    NText,
-    NIcon,
-    NGrid,
-    NGi,
-    NCard,
-    NSpace,
-    NForm,
-    NFormItem,
-    NRadioGroup,
-    NRadio,
-    NSelect,
-    NSpin,
-  ],
-});
 
 const routes = [
   {
@@ -79,4 +28,4 @@ const router = createRouter({
   routes,
 });
 
-createApp(App).use(naive).use(pinia).use(router).mount("#app");
+createApp(App).use(pinia).use(router).mount("#app");

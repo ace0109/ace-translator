@@ -1,145 +1,236 @@
 <template>
-  <!-- Removed outer n-layout and n-layout-content as MainLayout handles scrolling/viewport -->
-  <div style="display: flex; flex-direction: column; height: 100vh; padding: 24px; box-sizing: border-box;">
-    <n-grid x-gap="12" y-gap="12" cols="2" style="flex: 1; height: 100%;"> <!-- height: 0 is key for flex child to scroll/grow correctly -->
-      <n-gi style="display: flex; flex-direction: column; height: 100%;">
-        <n-space vertical style="flex-grow: 1; display: flex; flex-direction: column; height: 100%;">
-          <n-card
-            :bordered="false"
-            title="源语言"
-            style="flex-grow: 1; display: flex; flex-direction: column; height: 100%;"
-            content-style="flex: 1; display: flex; flex-direction: column;"
-          >
-            <template #header-extra>
-              <LanguageSelector v-model="sourceLang" placeholder="选择源语言" />
-            </template>
-            <n-input
-              v-model:value="sourceText"
-              type="textarea"
-              placeholder="输入或粘贴要翻译的文本"
-              style="flex-grow: 1; height: 100%;"
-              :autosize="false"
+  <div class="flex min-h-screen flex-col gap-6 p-6">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 class="text-xl font-semibold leading-tight">Ace Translator</h1>
+        <p class="text-sm text-muted-foreground">
+          自动检测源语言，缓存常用目标语言，快速切换无需重复请求
+        </p>
+      </div>
+      <Button variant="outline" class="gap-2" @click="openSettingsWindow">
+        <Settings2 class="h-4 w-4" />
+        打开设置窗口
+      </Button>
+    </div>
+
+    <div class="grid flex-1 grid-cols-2 items-stretch gap-4">
+      <Card class="flex h-full flex-col">
+        <CardHeader class="pb-2">
+          <div class="flex items-center justify-between gap-3">
+            <CardTitle class="text-base">源语言</CardTitle>
+            <div class="flex h-10 items-center rounded-md border px-3 text-sm text-muted-foreground">
+              {{ langDisplay }}
+            </div>
+          </div>
+          <CardDescription>输入或粘贴需要翻译的文本</CardDescription>
+        </CardHeader>
+        <CardContent class="flex-1">
+          <Textarea
+            v-model="sourceText"
+            placeholder="输入要翻译的内容，支持快捷粘贴。"
+            class="h-full min-h-[260px]"
+            @keydown.enter.exact.prevent="handleTranslate"
+          />
+        </CardContent>
+      </Card>
+
+      <Card class="flex h-full flex-col">
+        <CardHeader class="pb-2">
+          <div class="grid grid-cols-2 items-center gap-3">
+            <CardTitle class="text-base">目标语言</CardTitle>
+            <LanguageSelector
+              v-model="targetLang"
+              placeholder="选择目标语言"
+              class="w-full"
             />
-          </n-card>
-        </n-space>
-      </n-gi>
-      <n-gi style="display: flex; flex-direction: column; height: 100%;">
-        <n-space vertical style="flex-grow: 1; display: flex; flex-direction: column; height: 100%;">
-          <n-card
-            :bordered="false"
-            title="目标语言"
-            style="flex-grow: 1; display: flex; flex-direction: column; height: 100%;"
-            content-style="flex: 1; display: flex; flex-direction: column;"
-          >
-            <template #header-extra>
-              <LanguageSelector v-model="targetLang" placeholder="选择目标语言" />
-            </template>
-            <n-input
-              v-model:value="translatedText"
-              type="textarea"
-              placeholder="翻译结果将显示在这里"
-              style="flex-grow: 1; height: 100%;"
-              :autosize="false"
-              readonly
-            />
-          </n-card>
-        </n-space>
-      </n-gi>
-    </n-grid>
-    <n-space justify="center" style="margin-top: 24px; flex-shrink: 0;">
-      <n-button type="primary" :loading="isLoading" @click="handleTranslate">
-        <template #icon>
-          <n-icon><Language /></n-icon>
-        </template>
-        翻译
-      </n-button>
-      <n-button @click="swapLanguages">
-        <template #icon>
-          <n-icon><SwapHorizontal /></n-icon>
-        </template>
-        交换语言
-      </n-button>
-      <n-button @click="clearText">
-        <template #icon>
-          <n-icon><Trash /></n-icon>
-        </template>
+          </div>
+          <CardDescription>翻译结果</CardDescription>
+        </CardHeader>
+        <CardContent class="flex-1 space-y-2">
+          <Textarea
+            :model-value="displayedTranslation"
+            placeholder="翻译结果将显示在这里"
+            class="h-full min-h-[260px]"
+            readonly
+          />
+        </CardContent>
+      </Card>
+    </div>
+
+    <div class="flex flex-wrap items-center justify-center gap-3">
+      <Button class="gap-2" :disabled="isLoading" @click="handleTranslate">
+        <Loader2 v-if="isLoading" class="h-4 w-4 animate-spin" />
+        <Languages v-else class="h-4 w-4" />
+        <span>{{ isLoading ? '正在翻译...' : '开始翻译' }}</span>
+      </Button>
+      <Button variant="outline" class="gap-2" :disabled="isLoading" @click="clearText">
+        <Trash2 class="h-4 w-4" />
         清空
-      </n-button>
-    </n-space>
+      </Button>
+      <Button
+        v-if="displayedTranslation"
+        variant="secondary"
+        class="gap-2"
+        :disabled="isLoading"
+        @click="copyTranslated"
+      >
+        <Copy class="h-4 w-4" />
+        复制当前结果
+      </Button>
+    </div>
+    <transition name="fade">
+      <div
+        v-if="isLoading"
+        class="pointer-events-auto fixed inset-0 z-40 flex items-center justify-center bg-background/70 backdrop-blur-sm"
+      >
+        <div class="flex items-center gap-3 rounded-lg border bg-card px-4 py-3 shadow-lg">
+          <Loader2 class="h-5 w-5 animate-spin text-muted-foreground" />
+          <span class="text-sm text-foreground">正在翻译，请稍候...</span>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
-import { useMessage } from 'naive-ui';
-import { Language, SwapHorizontal, Trash } from '@vicons/ionicons5';
-import LanguageSelector from '../common/LanguageSelector.vue';
-import { invoke } from '@tauri-apps/api/core';
-import { useTranslationStore } from '../../stores/translation';
-import {
-  NGrid,
-  NGi,
-  NCard,
-  NInput,
-  NSpace,
-  NButton,
-  NIcon,
-} from 'naive-ui';
+import { computed, ref, watch } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
+import { storeToRefs } from 'pinia'
+import { Copy, Languages, Loader2, Settings2, Trash2 } from 'lucide-vue-next'
+import { useTranslationStore } from '@/stores/translation'
+import { useSettingsStore } from '@/stores/settings'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Textarea } from '@/components/ui/textarea'
+import LanguageSelector from '../common/LanguageSelector.vue'
+import { showToast } from '@/lib/toast'
+import { defaultCommonTargets, languageOptions } from '@/constants/languages'
 
-const message = useMessage();
-const translationStore = useTranslationStore();
+const translationStore = useTranslationStore()
+const settingsStore = useSettingsStore()
 
-const sourceText = ref(translationStore.sourceText);
-const translatedText = ref(translationStore.translatedText);
-const sourceLang = ref(translationStore.sourceLang);
-const targetLang = ref(translationStore.targetLang);
-const isLoading = ref(translationStore.isLoading);
+const { sourceText, targetLang, isLoading, detectedLang, translations } =
+  storeToRefs(translationStore)
 
-// 同步 store
-watch(sourceText, (val) => { translationStore.setSourceText(val); });
-watch(translatedText, (val) => { translationStore.setTranslatedText(val); });
-watch(sourceLang, (val) => { translationStore.setSourceLang(val); });
-watch(targetLang, (val) => { translationStore.setTargetLang(val); });
-watch(isLoading, (val) => { translationStore.setLoading(val); });
+const displayedTranslation = computed(() => translations.value[targetLang.value] || '')
+const langDisplay = computed(() => {
+  if (!detectedLang.value) return '自动检测'
+  const found = languageOptions.find((o) => o.value === detectedLang.value)
+  return found ? found.label : detectedLang.value
+})
 
-async function handleTranslate() {
+const ensureCommonTargets = () => {
+  const list = settingsStore.commonTargetLanguages && settingsStore.commonTargetLanguages.length > 0
+    ? settingsStore.commonTargetLanguages
+    : defaultCommonTargets
+  return Array.from(new Set(list)).slice(0, 5)
+}
+
+const callTranslate = async (targets: string[]) => {
   if (!sourceText.value.trim()) {
-    message.warning('请输入要翻译的文本');
-    return;
+    showToast('请输入要翻译的文本', 'error')
+    return null
   }
-  isLoading.value = true;
+  isLoading.value = true
   try {
-    const result: string = await invoke('translate_text', {
+    const response: any = await invoke('translate_text', {
       text: sourceText.value,
-      sourceLang: sourceLang.value,
-      targetLang: targetLang.value,
-    });
-    translatedText.value = result;
-    message.success('翻译成功');
+      targetLangs: targets,
+    })
+    return response
   } catch (error: any) {
-    message.error(`翻译失败: ${error}`);
-    translatedText.value = `翻译失败: ${error}`;
+    const errMsg = error?.message || String(error)
+    showToast(`翻译失败：${errMsg}`, 'error')
+    return null
   } finally {
-    isLoading.value = false;
+    isLoading.value = false
   }
 }
 
-function swapLanguages() {
-  const tempLang = sourceLang.value;
-  sourceLang.value = targetLang.value;
-  targetLang.value = tempLang;
+const handleTranslate = async () => {
+  const targets = Array.from(new Set([...ensureCommonTargets(), targetLang.value])).slice(0, 5)
+  const result = await callTranslate(targets)
+  if (!result) return
 
-  const tempText = sourceText.value;
-  sourceText.value = translatedText.value;
-  translatedText.value = tempText;
+  const { detected, map } = normalizeResult(result)
+  translationStore.setDetectedLang(detected)
+  translationStore.setTranslations(map)
+
+  // 如果检测语言与当前目标相同，自动切换
+  if (detected && detected === targetLang.value) {
+    const fallback = detected.startsWith('zh') ? 'en' : 'zh-CN'
+    targetLang.value = fallback
+    if (!map[fallback]) {
+      const extra = await callTranslate([fallback])
+      if (extra?.translations) {
+        translationStore.mergeTranslations(extra.translations as Record<string, string>)
+      }
+    }
+    showToast(`检测到源语言与目标相同，已切换为 ${targetLang.value}`, 'info')
+  }
 }
 
-function clearText() {
-  sourceText.value = '';
-  translatedText.value = '';
+// 切换目标语言时，如已有缓存直接展示，否则请求单语言翻译并合并
+watch(
+  () => targetLang.value,
+  async (newLang) => {
+    if (!sourceText.value.trim()) return
+    if (translations.value[newLang]) return
+    const result = await callTranslate([newLang])
+    const { map } = normalizeResult(result)
+    if (Object.keys(map).length) {
+      translationStore.mergeTranslations(map)
+    }
+  },
+)
+
+const clearText = () => {
+  sourceText.value = ''
+  translationStore.clearTranslations()
+}
+
+watch(
+  () => sourceText.value,
+  (val, old) => {
+    if (val !== old) {
+      translationStore.clearTranslations()
+    }
+  },
+)
+
+const copyTranslated = async () => {
+  if (!displayedTranslation.value) return
+  try {
+    await navigator.clipboard.writeText(displayedTranslation.value)
+    showToast('已复制到剪贴板', 'info')
+  } catch (error: any) {
+    const errMsg = error?.message || String(error)
+    showToast(`复制失败：${errMsg}`, 'error')
+  }
+}
+
+const openSettingsWindow = async () => {
+  try {
+    await invoke('show_settings_window')
+  } catch (error: any) {
+    const errMsg = error?.message || String(error)
+    showToast(`打开设置窗口失败：${errMsg}`, 'error')
+  }
+}
+
+const normalizeResult = (result: any) => {
+  if (!result) return { detected: '', map: {} as Record<string, string> }
+  const detected =
+    result.detected_source_lang ||
+    result.detectedLang ||
+    result.detected_language ||
+    ''
+  const map: Record<string, string> = {}
+  if (result.translations && typeof result.translations === 'object') {
+    Object.assign(map, result.translations as Record<string, string>)
+  } else if (result.translation && targetLang.value) {
+    map[targetLang.value] = result.translation as string
+  }
+  return { detected, map }
 }
 </script>
-
-<style scoped>
-/* 可以在这里添加 Translator.vue 的局部样式 */
-</style>

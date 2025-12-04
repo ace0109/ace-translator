@@ -4,6 +4,7 @@ mod commands;
 mod services;
 mod models;
 mod utils;
+mod config;
 
 pub struct AppState {
     pub db: sqlx::SqlitePool,
@@ -103,6 +104,7 @@ pub fn run() {
             commands::settings::save_settings,
             commands::settings::get_settings,
             commands::system::show_floating_window,
+            commands::system::show_settings_window,
             commands::system::hide_window,
         ])
         .run(tauri::generate_context!())

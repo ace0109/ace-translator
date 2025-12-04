@@ -5,6 +5,7 @@ export const useSettingsStore = defineStore('settings', {
   state: () => ({
     apiKey: '',
     theme: 'light',
+    commonTargetLanguages: [] as string[],
   }),
   actions: {
     setApiKey(key: string) {
@@ -12,6 +13,9 @@ export const useSettingsStore = defineStore('settings', {
     },
     setTheme(theme: string) {
       this.theme = theme;
+    },
+    setCommonTargetLanguages(langs: string[]) {
+      this.commonTargetLanguages = langs;
     },
   },
 });

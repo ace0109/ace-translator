@@ -1,30 +1,33 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
-import { NConfigProvider, NMessageProvider, darkTheme, lightTheme } from 'naive-ui';
-import { zhCN, dateZhCN } from 'naive-ui';
+import { onMounted } from 'vue';
 import { useSettingsStore } from './stores/settings';
+import { useTranslationStore } from './stores/translation';
+import { isTauriEnv } from './utils/env';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-
-// 可以根据应用主题或其他设置动态改变 themeOverrides
-const themeOverrides = {
-  common: {
-    primaryColor: '#646CFF',
-    primaryColorHover: '#535BF2',
-  },
-  // ... 其他组件的全局主题配置
-};
+import Toaster from './components/common/Toaster.vue';
+import { defaultCommonTargets } from './constants/languages';
 
 const settingsStore = useSettingsStore();
-const currentTheme = computed(() => (settingsStore.theme === 'dark' ? darkTheme : lightTheme));
+const translationStore = useTranslationStore();
 
 onMounted(async () => {
+  if (!isTauriEnv()) return;
   // 1. Load initial settings
   try {
     const settings: any = await invoke('get_settings');
     if (settings) {
       settingsStore.setApiKey(settings.api_key);
       settingsStore.setTheme(settings.theme);
+      settingsStore.setCommonTargetLanguages(settings.common_target_languages || defaultCommonTargets);
+      translationStore.setTargetLang(settings.target_language || 'zh-CN');
+      
+      // Apply dark mode class to html element
+      if (settings.theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
     }
   } catch (error) {
     console.error('Failed to load settings:', error);
@@ -36,38 +39,23 @@ onMounted(async () => {
     if (s) {
       settingsStore.setApiKey(s.api_key);
       settingsStore.setTheme(s.theme);
+      settingsStore.setCommonTargetLanguages(s.common_target_languages || defaultCommonTargets);
+      translationStore.setTargetLang(s.target_language || 'zh-CN');
+      
+      // Sync dark mode class
+      if (s.theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
     }
   });
 });
-
 </script>
 
 <template>
-  <n-config-provider :locale="zhCN" :date-locale="dateZhCN" :theme-overrides="themeOverrides" :theme="currentTheme">
-    <n-message-provider>
-      <router-view></router-view>
-    </n-message-provider>
-  </n-config-provider>
+  <div class="h-screen w-screen bg-background text-foreground antialiased overflow-auto">
+    <router-view></router-view>
+    <Toaster />
+  </div>
 </template>
-
-<style>
-
-/* Global styles */
-
-html, body, #app {
-
-  margin: 0;
-
-  padding: 0;
-
-  width: 100%;
-
-  height: 100%;
-
-  overflow: hidden; /* Prevent scrollbars */
-
-  background: transparent; /* Important for window transparency */
-
-}
-
-</style>
