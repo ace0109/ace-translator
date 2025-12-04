@@ -16,6 +16,7 @@
         "title": "ace-translator",
         "width": 1000,
         "height": 700,
+        "minWidth": 800,
         "resizable": true,
         "minimizable": true,
         "fullscreen": false

@@ -29,15 +29,6 @@ import {
   NSpin,
 } from "naive-ui";
 
-// Import layout components
-import MainLayout from "./components/layout/MainLayout.vue";
-import FloatingLayout from "./components/layout/FloatingLayout.vue";
-
-// Import feature components
-import Translator from "./components/features/Translator.vue";
-import FloatingTranslator from "./components/features/FloatingTranslator.vue";
-import Settings from "./components/features/Settings.vue";
-
 const pinia = createPinia();
 
 const naive = create({
@@ -69,17 +60,17 @@ const naive = create({
 const routes = [
   {
     path: "/",
-    component: MainLayout,
+    component: () => import("./components/layout/MainLayout.vue"),
     children: [
-      { path: "", name: "Translator", component: Translator },
-      { path: "settings", name: "Settings", component: Settings },
+      { path: "", name: "Translator", component: () => import("./components/features/Translator.vue") },
+      { path: "settings", name: "Settings", component: () => import("./components/features/Settings.vue") },
     ],
   },
   {
     path: "/floating",
     name: "Floating",
-    component: FloatingLayout,
-    children: [{ path: "", name: "FloatingTranslator", component: FloatingTranslator }],
+    component: () => import("./components/layout/FloatingLayout.vue"),
+    children: [{ path: "", name: "FloatingTranslator", component: () => import("./components/features/FloatingTranslator.vue") }],
   },
 ];
 
