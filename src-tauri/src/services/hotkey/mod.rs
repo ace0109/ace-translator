@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{Manager, Emitter};
 use tokio::time::sleep;
-use crate::services::clipboard;
+use crate::{services::clipboard, AppState};
 use mouse_position::mouse_position::Mouse;
 use std::cmp;
 
@@ -40,24 +40,48 @@ async fn handle_double_copy(app: tauri::AppHandle) {
             }
             
             if let Some(window) = app.get_webview_window("floating") {
-                let position = Mouse::get_mouse_position();
-                let (mut pos_x, mut pos_y) = (300i32, 200i32);
-                if let Mouse::Position { x, y } = position {
-                    pos_x = x;
-                    pos_y = y;
+                // 若已固定，则不改坐标；未固定时按鼠标居中定位
+                let pinned = {
+                    let state: tauri::State<AppState> = app.state();
+                    state
+                        .floating_pinned
+                        .lock()
+                        .map(|g| *g)
+                        .unwrap_or(false)
+                };
+
+                let loading = {
+                    let state: tauri::State<AppState> = app.state();
+                    state
+                        .floating_loading
+                        .lock()
+                        .map(|g| *g)
+                        .unwrap_or(false)
+                };
+
+                if !pinned && !loading {
+                    let position = Mouse::get_mouse_position();
+                    let (mut pos_x, mut pos_y) = (300i32, 200i32);
+                    if let Mouse::Position { x, y } = position {
+                        pos_x = x;
+                        pos_y = y;
+                    }
+                    
+                    let window_width = 400i32;
+                    let window_height = 500i32;
+                    let target_x = cmp::max(0, pos_x - window_width / 2);
+                    let target_y = cmp::max(0, pos_y - (window_height / 2) - 10);
+                    
+                    let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
+                        x: target_x,
+                        y: target_y,
+                    }));
+                    
+                    println!("[hotkey] Showing floating window at ({}, {})", target_x, target_y);
+                } else {
+                    println!("[hotkey] Floating pinned, keep position");
                 }
-                
-                let window_width = 400i32;
-                let window_height = 150i32;
-                let target_x = cmp::max(0, pos_x - window_width / 2);
-                let target_y = cmp::max(0, pos_y - (window_height / 2) - 10);
-                
-                let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
-                    x: target_x,
-                    y: target_y,
-                }));
-                
-                println!("[hotkey] Showing floating window at ({}, {})", target_x, target_y);
+
                 let _ = window.show();
                 let _ = window.set_focus();
                 

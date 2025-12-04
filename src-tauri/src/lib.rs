@@ -8,6 +8,9 @@ mod config;
 
 pub struct AppState {
     pub db: sqlx::SqlitePool,
+    pub floating_pinned: std::sync::Arc<std::sync::Mutex<bool>>,
+    pub floating_loading: std::sync::Arc<std::sync::Mutex<bool>>,
+    pub floating_abort_handles: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<u64, futures::future::AbortHandle>>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -28,7 +31,12 @@ pub fn run() {
                     }
                 };
 
-                handle.manage(AppState { db: pool });
+                handle.manage(AppState { 
+                    db: pool, 
+                    floating_pinned: std::sync::Arc::new(std::sync::Mutex::new(false)),
+                    floating_loading: std::sync::Arc::new(std::sync::Mutex::new(false)),
+                    floating_abort_handles: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+                });
             });
 
             // Start passive key listener (using platform-specific impl)
@@ -91,10 +99,29 @@ pub fn run() {
                     window.hide().unwrap();
                     api.prevent_close();
                 }
+                if window.label() == "floating" {
+                    window.hide().unwrap();
+                    api.prevent_close();
+                }
             }
             WindowEvent::Focused(false) => {
                 if window.label() == "floating" {
-                    let _ = window.hide();
+                    // 如果未固定，则失焦隐藏；若已固定，则不隐藏
+                    let app_handle = window.app_handle();
+                    let state: tauri::State<AppState> = app_handle.state();
+                    let pinned = state
+                        .floating_pinned
+                        .lock()
+                        .map(|g| *g)
+                        .unwrap_or(false);
+                    let loading = state
+                        .floating_loading
+                        .lock()
+                        .map(|g| *g)
+                        .unwrap_or(false);
+                    if !pinned && !loading {
+                        let _ = window.hide();
+                    }
                 }
             }
             _ => {}
@@ -106,6 +133,10 @@ pub fn run() {
             commands::system::show_floating_window,
             commands::system::show_settings_window,
             commands::system::hide_window,
+            commands::system::set_floating_pinned,
+            commands::system::get_floating_pinned,
+            commands::system::set_floating_loading,
+            commands::system::get_floating_loading,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

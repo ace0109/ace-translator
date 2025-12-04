@@ -1,6 +1,6 @@
 <template>
-  <div class="flex h-full w-full flex-col bg-background text-foreground">
-    <!-- Header: 检测语言 & 目标列表 -->
+  <div class="relative flex h-full w-full flex-col bg-background text-foreground rounded-xl border shadow-lg">
+    <!-- Header -->
     <header class="grid grid-cols-1 gap-2 border-b bg-card px-3 py-2 text-sm shadow-sm">
       <div class="flex items-center justify-between">
         <span class="text-xs text-muted-foreground">检测语言</span>
@@ -30,14 +30,20 @@
       </div>
     </section>
 
-    <!-- 翻译结果列表 -->
+    <!-- 结果列表 -->
     <section class="min-h-0 flex-1 px-3 py-2">
       <div class="space-y-2">
         <div
           v-if="isLoading"
-          class="flex items-center justify-center rounded-md border border-dashed bg-muted/30 px-3 py-4"
+          class="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed bg-muted/30 px-3 py-4"
         >
           <LoadingSpinner />
+          <button
+            class="inline-flex items-center gap-1 rounded border bg-muted/60 px-2 py-1 text-xs text-muted-foreground transition hover:bg-accent hover:text-accent-foreground"
+            @click="cancelCurrent"
+          >
+            取消
+          </button>
         </div>
         <template v-else>
           <div
@@ -65,6 +71,38 @@
         </template>
       </div>
     </section>
+
+    <!-- Pin button -->
+    <div class="pointer-events-none absolute inset-0">
+      <div class="pointer-events-auto fixed bottom-3 right-3">
+        <button
+          class="inline-flex items-center justify-center rounded-full border border-red-500 bg-red-500 text-white p-2 shadow-lg transition hover:bg-red-600"
+          @click="togglePin"
+        >
+          <component :is="pinned ? PinOff : Pin" class="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+
+    <!-- 全屏 Loading 遮罩 (避免失焦关闭) -->
+    <transition name="fade">
+      <div
+        v-if="isLoading"
+        class="pointer-events-auto fixed inset-0 z-10 flex items-center justify-center bg-background/70 backdrop-blur"
+      >
+        <div class="flex flex-col items-center gap-3 rounded-lg border bg-card px-4 py-3 shadow-lg">
+          <LoadingSpinner />
+          <div class="flex gap-2">
+            <button
+              class="inline-flex items-center gap-1 rounded border bg-muted/60 px-3 py-1 text-xs text-muted-foreground transition hover:bg-accent hover:text-accent-foreground"
+              @click="cancelCurrent"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
   </div>
 </template>
 
@@ -76,11 +114,14 @@ import LoadingSpinner from '../common/LoadingSpinner.vue'
 import { useSettingsStore } from '@/stores/settings'
 import { defaultCommonTargets, languageOptions } from '@/constants/languages'
 import { showToast } from '@/lib/toast'
+import { Pin, PinOff } from 'lucide-vue-next'
 
 const translations = ref<Record<string, string>>({})
 const sourcePreview = ref('')
 const isLoading = ref(false)
 const detectedLang = ref('')
+const pinned = ref(false)
+const requestId = ref(0)
 
 const settingsStore = useSettingsStore()
 
@@ -142,17 +183,35 @@ let unlisten: (() => void) | undefined;
 
 onMounted(async () => {
   unlisten = await listen<string>('floating-show', async (event) => {
+    if (isLoading.value) {
+      showToast('正在翻译，请先等待或取消当前任务', 'info')
+      return
+    }
+
+    requestId.value += 1
+    const thisReq = requestId.value
+
     sourcePreview.value = event.payload || ''
     translations.value = {}
     detectedLang.value = ''
     isLoading.value = true
+    try {
+      await invoke('set_floating_loading', { loading: true })
+    } catch (_) {}
+    try {
+      pinned.value = await invoke('get_floating_pinned')
+    } catch (_) {}
 
     try {
       const targets = targetList()
       const result: any = await invoke('translate_text', {
         text: event.payload,
         targetLangs: targets,
+        requestId: thisReq,
       })
+      if (thisReq !== requestId.value) {
+        return
+      }
       detectedLang.value =
         result?.detected_source_lang ||
         result?.detectedLang ||
@@ -160,10 +219,18 @@ onMounted(async () => {
         ''
       translations.value = (result?.translations as Record<string, string>) || {}
     } catch (error: any) {
+      if (thisReq !== requestId.value) {
+        return
+      }
       const errMsg = error?.message || String(error)
       translations.value = { error: `翻译失败：${errMsg}` }
     } finally {
-      isLoading.value = false
+      if (thisReq === requestId.value) {
+        isLoading.value = false
+        try {
+          await invoke('set_floating_loading', { loading: false })
+        } catch (_) {}
+      }
     }
   })
 })
@@ -173,4 +240,29 @@ onUnmounted(() => {
     unlisten()
   }
 })
+
+const togglePin = async () => {
+  const next = !pinned.value
+  pinned.value = next
+  try {
+    await invoke('set_floating_pinned', { pinned: next })
+    showToast(next ? '已固定悬浮窗' : '已取消固定', 'info')
+  } catch (error: any) {
+    const errMsg = error?.message || String(error)
+    showToast(`切换固定状态失败：${errMsg}`, 'error')
+  }
+}
+
+const cancelCurrent = async () => {
+  if (!isLoading.value) return
+  requestId.value += 1
+  isLoading.value = false
+  try {
+    await invoke('set_floating_loading', { loading: false })
+  } catch (_) {}
+  
+  try {
+    await invoke('hide_window')
+  } catch (_) {}
+}
 </script>

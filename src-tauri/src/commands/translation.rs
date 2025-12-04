@@ -3,18 +3,25 @@ use crate::AppState;
 use tauri::{AppHandle, State};
 use crate::services::encryption::decrypt_api_key;
 use serde_json::Value;
-
+use std::time::{SystemTime, UNIX_EPOCH};
 #[tauri::command]
 pub async fn translate_text(
     _app: AppHandle,
     state: State<'_, AppState>,
     text: String,
-    // 目标语言列表（前端已去重&限制长度，后端再兜底限制）
-    #[allow(non_snake_case)]
-    targetLangs: Vec<String>,
+    #[allow(non_snake_case)] targetLangs: Vec<String>,
+    #[allow(non_snake_case)] requestId: Option<u64>,
 ) -> Result<Value, String> {
+    let req_id = requestId.unwrap_or_else(|| {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+    });
+
     println!(
-        "[translate_text] start | target_langs={:?} text_len={}",
+        "[translate_text] start | req_id={:?} target_langs={:?} text_len={}",
+        req_id,
         targetLangs,
         text.len()
     );
@@ -23,7 +30,6 @@ pub async fn translate_text(
         return Err("Text is empty".to_string());
     }
 
-    // 拉取 API Key
     let encrypted_key: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = 'api_key'")
         .fetch_optional(&state.db)
         .await
@@ -35,7 +41,6 @@ pub async fn translate_text(
         return Err("API Key not set. Please configure it in settings.".to_string());
     };
 
-    // 最多 5 个目标语言，去重
     let mut cleaned = targetLangs.clone();
     cleaned.sort();
     cleaned.dedup();
@@ -46,7 +51,16 @@ pub async fn translate_text(
         cleaned.push("zh-CN".to_string());
     }
 
-    let result = zhipu::call_zhipu_api(&api_key, &text, "auto", &cleaned).await?;
+    // 在当前实现中，取消直接返回错误，调用方忽略结果即可
+    if let Ok(mut loading) = state.floating_loading.lock() {
+        *loading = true;
+    }
 
-    Ok(result)
+    let result = zhipu::call_zhipu_api(&api_key, &text, "auto", &cleaned, Some(req_id)).await;
+
+    if let Ok(mut loading) = state.floating_loading.lock() {
+        *loading = false;
+    }
+
+    result
 }

@@ -26,9 +26,11 @@ pub async fn call_zhipu_api(
     text: &str,
     source_lang: &str,
     target_langs: &[String],
+    request_id: Option<u64>,
 ) -> Result<Value, String> {
     println!(
-        "[zhipu] request | model={} source_lang={} target_langs={:?} text_len={}",
+        "[zhipu] request | req_id={:?} model={} source_lang={} target_langs={:?} text_len={}",
+        request_id,
         DEFAULT_MODEL,
         source_lang,
         target_langs,

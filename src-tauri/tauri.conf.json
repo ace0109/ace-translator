@@ -32,6 +32,7 @@
         "maximizable": false,
         "fullscreen": false,
         "visible": false,
+        "decorations": false,
         "url": "index.html#/floating"
       },
       {
