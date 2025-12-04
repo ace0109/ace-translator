@@ -36,8 +36,9 @@ pub fn run() {
             // 3. Initialize System Tray
             use tauri::menu::{MenuBuilder, MenuItemBuilder};
             let show = MenuItemBuilder::new("Show Translator").id("show").build(app)?;
+            let settings = MenuItemBuilder::new("Settings").id("settings").build(app)?;
             let quit = MenuItemBuilder::new("Quit").id("quit").build(app)?;
-            let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
+            let menu = MenuBuilder::new(app).items(&[&show, &settings, &quit]).build()?;
 
             // Load and decode icon
             let icon_bytes = include_bytes!("../icons/icon.png");
@@ -59,6 +60,12 @@ pub fn run() {
                                 let _ = window.set_focus();
                             }
                         }
+                        "settings" => {
+                            if let Some(window) = app.get_webview_window("settings") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
                         _ => {}
                     }
                 })
@@ -76,6 +83,10 @@ pub fn run() {
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => {
                 if window.label() == "main" {
+                    window.hide().unwrap();
+                    api.prevent_close();
+                }
+                if window.label() == "settings" {
                     window.hide().unwrap();
                     api.prevent_close();
                 }

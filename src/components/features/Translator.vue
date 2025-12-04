@@ -1,7 +1,7 @@
 <template>
   <n-layout has-sider style="height: 100%;">
     <n-layout-content content-style="padding: 24px;">
-      <n-grid x-gap="12" :cols="2">
+      <n-grid x-gap="12" y-gap="12" :cols="gridCols"> <!-- Modified cols to use computed property -->
         <n-gi>
           <n-space vertical>
             <n-card :bordered="false" title="源语言">
@@ -59,12 +59,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue'; // Added computed
 import { NLayout, NLayoutContent, NGrid, NGi, NCard, NInput, NSpace, NButton, NIcon, useMessage } from 'naive-ui';
 import { Language, SwapHorizontal, Trash } from '@vicons/ionicons5';
 import LanguageSelector from '../common/LanguageSelector.vue';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslationStore } from '../../stores/translation';
+import { useWindowSize } from '@vueuse/core'; // Added useWindowSize
 
 const message = useMessage();
 const translationStore = useTranslationStore();
@@ -74,6 +75,10 @@ const translatedText = ref(translationStore.translatedText);
 const sourceLang = ref(translationStore.sourceLang);
 const targetLang = ref(translationStore.targetLang);
 const isLoading = ref(translationStore.isLoading);
+
+// Responsive grid columns
+const { width } = useWindowSize();
+const gridCols = computed(() => (width.value < 600 ? 1 : 2));
 
 // 同步 store
 watch(sourceText, (val) => { translationStore.setSourceText(val); });

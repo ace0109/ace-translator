@@ -1,9 +1,9 @@
 use crate::AppState;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, State, Emitter};
 use serde::{Deserialize, Serialize};
 use crate::services::encryption::{encrypt_api_key, decrypt_api_key};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppSettings {
     pub api_key: String,
     pub theme: String,
@@ -20,15 +20,15 @@ async fn get_val(pool: &sqlx::SqlitePool, key: &str) -> Option<String> {
 }
 
 #[tauri::command]
-pub async fn save_settings(_app: AppHandle, state: State<'_, AppState>, settings: AppSettings) -> Result<(), String> {
+pub async fn save_settings(app: AppHandle, state: State<'_, AppState>, settings: AppSettings) -> Result<(), String> {
     // Encrypt API Key
     let encrypted_key = encrypt_api_key(&settings.api_key)?;
 
     // Save to DB
     let queries = [
         ("api_key", encrypted_key),
-        ("theme", settings.theme),
-        ("target_language", settings.target_language),
+        ("theme", settings.theme.clone()),
+        ("target_language", settings.target_language.clone()),
     ];
 
     for (key, value) in queries {
@@ -39,6 +39,9 @@ pub async fn save_settings(_app: AppHandle, state: State<'_, AppState>, settings
             .await
             .map_err(|e| e.to_string())?;
     }
+
+    // Emit event to all windows
+    app.emit("settings-changed", &settings).map_err(|e| e.to_string())?;
 
     Ok(())
 }
