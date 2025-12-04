@@ -56,3 +56,25 @@ pub async fn get_floating_loading(state: tauri::State<'_, AppState>) -> Result<b
     }
     Ok(false)
 }
+
+#[tauri::command]
+pub async fn cache_stats(state: tauri::State<'_, AppState>) -> Result<(i64, i64), String> {
+    let size: i64 = sqlx::query_scalar("SELECT IFNULL(SUM(LENGTH(translated_text)), 0) FROM translation_history")
+        .fetch_one(&state.db)
+        .await
+        .unwrap_or(0);
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM translation_history")
+        .fetch_one(&state.db)
+        .await
+        .unwrap_or(0);
+    Ok((count, size))
+}
+
+#[tauri::command]
+pub async fn clear_cache(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    sqlx::query("DELETE FROM translation_history")
+        .execute(&state.db)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}

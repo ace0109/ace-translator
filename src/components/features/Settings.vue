@@ -1,15 +1,6 @@
 <template>
   <div class="p-6">
     <div class="mx-auto flex max-w-3xl flex-col gap-6">
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <h1 class="text-xl font-semibold leading-tight">应用设置</h1>
-          <p class="text-sm text-muted-foreground">
-            配置 API Key、默认目标语言与主题偏好
-          </p>
-        </div>
-      </div>
-
       <Card>
         <CardHeader>
           <CardTitle>基础信息</CardTitle>
@@ -116,6 +107,27 @@
           </div>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>缓存</CardTitle>
+          <CardDescription>查看并清理翻译缓存（保存在本地 SQLite）。</CardDescription>
+        </CardHeader>
+        <CardContent class="space-y-3">
+          <div class="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
+            <span class="text-muted-foreground">缓存条数</span>
+            <span class="font-mono text-foreground">{{ cacheCount }}</span>
+          </div>
+          <div class="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
+            <span class="text-muted-foreground">缓存大小（字节）</span>
+            <span class="font-mono text-foreground">{{ cacheSize }}</span>
+          </div>
+        </CardContent>
+        <CardFooter class="justify-end gap-2">
+          <Button variant="secondary" :disabled="isSaving" @click="loadCacheStats">刷新</Button>
+          <Button variant="destructive" :disabled="isSaving" @click="clearCache">清空缓存</Button>
+        </CardFooter>
+      </Card>
     </div>
   </div>
 </template>
@@ -157,11 +169,39 @@ const testPayload = ref('')
 const testResponse = ref('')
 const testError = ref('')
 
+const cacheCount = ref(0)
+const cacheSize = ref(0)
+
 const applyThemeClass = (theme: string) => {
   if (theme === 'dark') {
     document.documentElement.classList.add('dark')
   } else {
     document.documentElement.classList.remove('dark')
+  }
+}
+
+const loadCacheStats = async () => {
+  if (!isTauriEnv()) return
+  try {
+    const [count, size] = (await invoke('cache_stats')) as [number, number]
+    cacheCount.value = count
+    cacheSize.value = size
+  } catch (error: any) {
+    const errMsg = error?.message || String(error)
+    showToast(`读取缓存失败：${errMsg}`, 'error')
+  }
+}
+
+const clearCache = async () => {
+  if (!isTauriEnv()) return
+  try {
+    await invoke('clear_cache')
+    cacheCount.value = 0
+    cacheSize.value = 0
+    showToast('缓存已清理', 'info')
+  } catch (error: any) {
+    const errMsg = error?.message || String(error)
+    showToast(`清理缓存失败：${errMsg}`, 'error')
   }
 }
 
@@ -179,6 +219,7 @@ const loadSettings = async () => {
     settingsStore.setTheme(settingsForm.value.theme)
     settingsStore.setCommonTargetLanguages(settingsForm.value.commonTargetLanguages)
     applyThemeClass(settingsForm.value.theme)
+    loadCacheStats()
   } catch (error: any) {
     const errMsg = error?.message || String(error)
     showToast(`加载设置失败：${errMsg}`, 'error')
@@ -220,6 +261,7 @@ const saveSettings = async () => {
 
 onMounted(() => {
   loadSettings()
+  loadCacheStats()
 })
 
 watch(

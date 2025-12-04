@@ -137,6 +137,8 @@ pub fn run() {
             commands::system::get_floating_pinned,
             commands::system::set_floating_loading,
             commands::system::get_floating_loading,
+            commands::system::cache_stats,
+            commands::system::clear_cache,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
