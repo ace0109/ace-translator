@@ -7,7 +7,6 @@ use crate::services::encryption::{encrypt_api_key, decrypt_api_key};
 pub struct AppSettings {
     pub api_key: String,
     pub theme: String,
-    pub global_shortcut: String,
     pub target_language: String,
 }
 
@@ -29,7 +28,6 @@ pub async fn save_settings(_app: AppHandle, state: State<'_, AppState>, settings
     let queries = [
         ("api_key", encrypted_key),
         ("theme", settings.theme),
-        ("global_shortcut", settings.global_shortcut.clone()),
         ("target_language", settings.target_language),
     ];
 
@@ -49,7 +47,6 @@ pub async fn save_settings(_app: AppHandle, state: State<'_, AppState>, settings
 pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
     let encrypted_key = get_val(&state.db, "api_key").await.unwrap_or_default();
     let theme = get_val(&state.db, "theme").await.unwrap_or_else(|| "light".to_string());
-    let global_shortcut = get_val(&state.db, "global_shortcut").await.unwrap_or_else(|| "Alt+T".to_string());
     let target_language = get_val(&state.db, "target_language").await.unwrap_or_else(|| "zh-CN".to_string());
 
     let api_key = if !encrypted_key.is_empty() {
@@ -61,7 +58,6 @@ pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, Str
     Ok(AppSettings {
         api_key,
         theme,
-        global_shortcut,
         target_language,
     })
 }

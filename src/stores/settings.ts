@@ -5,7 +5,6 @@ export const useSettingsStore = defineStore('settings', {
   state: () => ({
     apiKey: '',
     theme: 'light',
-    globalShortcut: 'Alt+T',
   }),
   actions: {
     setApiKey(key: string) {
@@ -13,9 +12,6 @@ export const useSettingsStore = defineStore('settings', {
     },
     setTheme(theme: string) {
       this.theme = theme;
-    },
-    setGlobalShortcut(shortcut: string) {
-      this.globalShortcut = shortcut;
     },
   },
 });
