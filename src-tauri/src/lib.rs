@@ -92,8 +92,7 @@ pub fn run() {
 
             #[cfg(debug_assertions)]
             {
-                // 仅打开悬浮窗 DevTools，避免重复弹窗
-                if let Some(window) = app.get_webview_window("floating") {
+                if let Some(window) = app.get_webview_window("main") {
                     window.open_devtools();
                 }
             }
