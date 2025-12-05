@@ -4,7 +4,7 @@ import { defineStore } from 'pinia';
 export const useSettingsStore = defineStore('settings', {
   state: () => ({
     apiKey: '',
-    theme: 'light',
+    theme: 'dark',
     commonTargetLanguages: [] as string[],
   }),
   actions: {

@@ -11,6 +11,13 @@ import { defaultCommonTargets } from './constants/languages';
 const settingsStore = useSettingsStore();
 const translationStore = useTranslationStore();
 
+// Apply default theme immediately to avoid light flash before settings load
+if ((settingsStore.theme || 'dark') === 'dark') {
+  document.documentElement.classList.add('dark');
+} else {
+  document.documentElement.classList.remove('dark');
+}
+
 onMounted(async () => {
   if (!isTauriEnv()) return;
   // 1. Load initial settings
