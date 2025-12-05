@@ -2,7 +2,22 @@
   "permissions": {
     "allow": [
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(codesign:*)",
+      "Bash(cargo check:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__get-library-docs",
+      "Bash(git -C /Users/wangcaiyuan/ace/ace-translator status)",
+      "Bash(git -C /Users/wangcaiyuan/ace/ace-translator diff --stat)",
+      "Bash(git -C /Users/wangcaiyuan/ace/ace-translator log --oneline -5)",
+      "Bash(git -C /Users/wangcaiyuan/ace/ace-translator add src-tauri/Cargo.lock src-tauri/Cargo.toml src-tauri/build.rs src-tauri/src/commands/system.rs src-tauri/src/lib.rs src-tauri/src/services/hotkey/mod.rs src-tauri/src/services/mod.rs src-tauri/src/services/logger.rs src-tauri/tauri.conf.json src-tauri/Info.plist src-tauri/entitlements.plist src/components/features/Settings.vue src/components/features/LogViewer.vue src/main.ts)",
+      "Bash(git -C /Users/wangcaiyuan/ace/ace-translator commit -m \"$(cat <<''EOF''\nfeat: 修复 macOS release 版本热键监听问题并添加日志系统\n\n- 修复 macOS release 版本无法捕获 KeyDown 事件的问题\n- 添加正确的 entitlements.plist 禁用沙盒限制\n- 添加 Info.plist 声明辅助功能权限用途\n- 新增应用内日志查看功能，便于排查问题\n- 添加详细的热键监听日志记录\n- 在设置页面添加\"查看日志\"调试入口\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git -C /Users/wangcaiyuan/ace/ace-translator diff src-tauri/src/services/zhipu.rs)",
+      "Bash(git -C /Users/wangcaiyuan/ace/ace-translator add src-tauri/src/services/zhipu.rs)",
+      "Bash(git -C /Users/wangcaiyuan/ace/ace-translator commit -m \"$(cat <<''EOF''\nchore: 更换默认模型为 glm-4-flashx\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git -C /Users/wangcaiyuan/ace/ace-translator log --oneline -3)"
     ],
     "deny": [],
     "ask": []
