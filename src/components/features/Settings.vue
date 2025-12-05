@@ -134,6 +134,24 @@
           <Button variant="destructive" :disabled="isSaving" @click="clearCache">清空缓存</Button>
         </CardFooter>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>调试工具</CardTitle>
+          <CardDescription>用于排查问题的调试功能。</CardDescription>
+        </CardHeader>
+        <CardContent class="space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium">应用日志</p>
+              <p class="text-xs text-muted-foreground">查看应用运行日志，用于排查悬浮翻译等功能问题。</p>
+            </div>
+            <Button variant="outline" @click="openLogsWindow">
+              查看日志
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   </div>
 </template>
@@ -377,6 +395,19 @@ const runApiTest = async () => {
     showToast(`API 测试失败：${errMsg}`, 'error')
   } finally {
     testLoading.value = false
+  }
+}
+
+const openLogsWindow = async () => {
+  if (!isTauriEnv()) {
+    showToast('当前不在 Tauri 环境', 'error')
+    return
+  }
+  try {
+    await invoke('show_logs_window')
+  } catch (error: any) {
+    const errMsg = error?.message || String(error)
+    showToast(`打开日志窗口失败：${errMsg}`, 'error')
   }
 }
 </script>

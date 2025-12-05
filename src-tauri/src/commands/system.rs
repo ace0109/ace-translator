@@ -1,5 +1,6 @@
 use tauri::{AppHandle, Manager};
 use crate::AppState;
+use crate::services::logger::{LOGGER, LogEntry};
 
 #[tauri::command]
 pub async fn show_floating_window(app: AppHandle) -> Result<(), String> {
@@ -13,6 +14,15 @@ pub async fn show_floating_window(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn show_settings_window(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("settings") {
+        window.show().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn show_logs_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("logs") {
         window.show().map_err(|e| e.to_string())?;
         window.set_focus().map_err(|e| e.to_string())?;
     }
@@ -77,4 +87,42 @@ pub async fn clear_cache(state: tauri::State<'_, AppState>) -> Result<(), String
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// 检查 macOS 辅助功能权限状态
+#[tauri::command]
+pub fn check_accessibility() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        crate::services::hotkey::check_accessibility_permission()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        true // 非 macOS 平台不需要此权限
+    }
+}
+
+/// 请求 macOS 辅助功能权限（会打开系统偏好设置）
+#[tauri::command]
+pub fn request_accessibility() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        crate::services::hotkey::prompt_accessibility_permission()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        true // 非 macOS 平台不需要此权限
+    }
+}
+
+/// 获取应用日志
+#[tauri::command]
+pub fn get_logs() -> Vec<LogEntry> {
+    LOGGER.get_logs()
+}
+
+/// 清空日志
+#[tauri::command]
+pub fn clear_logs() {
+    LOGGER.clear();
 }

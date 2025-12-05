@@ -21,6 +21,11 @@ const routes = [
     component: () => import("./components/layout/FloatingLayout.vue"),
     children: [{ path: "", name: "FloatingTranslator", component: () => import("./components/features/FloatingTranslator.vue") }],
   },
+  {
+    path: "/logs",
+    name: "Logs",
+    component: () => import("./components/features/LogViewer.vue"),
+  },
 ];
 
 const router = createRouter({

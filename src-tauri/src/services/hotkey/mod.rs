@@ -5,7 +5,7 @@ use mouse_position::mouse_position::Mouse;
 use tauri::{Emitter, Manager};
 use tokio::time::sleep;
 
-use crate::{services::clipboard, AppState};
+use crate::{services::clipboard, AppState, app_info, app_error, app_debug};
 
 // Platform-specific imports
 #[cfg(target_os = "macos")]
@@ -30,19 +30,108 @@ struct DoubleTapState {
 #[cfg(target_os = "macos")]
 const KEY_C: CGKeyCode = 0x08;
 
+/// 检查 macOS 辅助功能权限
+#[cfg(target_os = "macos")]
+pub fn check_accessibility_permission() -> bool {
+    #[link(name = "ApplicationServices", kind = "framework")]
+    extern "C" {
+        fn AXIsProcessTrusted() -> bool;
+    }
+
+    let result = unsafe { AXIsProcessTrusted() };
+    app_info!("检查辅助功能权限: {}", if result { "已授权" } else { "未授权" });
+    result
+}
+
+/// 请求用户授予辅助功能权限（打开系统偏好设置）
+#[cfg(target_os = "macos")]
+pub fn prompt_accessibility_permission() -> bool {
+    use std::ffi::c_void;
+    use std::ptr;
+
+    app_info!("正在请求辅助功能权限...");
+
+    #[link(name = "ApplicationServices", kind = "framework")]
+    extern "C" {
+        fn AXIsProcessTrustedWithOptions(options: *const c_void) -> bool;
+    }
+
+    #[link(name = "CoreFoundation", kind = "framework")]
+    extern "C" {
+        fn CFDictionaryCreate(
+            allocator: *const c_void,
+            keys: *const *const c_void,
+            values: *const *const c_void,
+            num_values: isize,
+            key_callbacks: *const c_void,
+            value_callbacks: *const c_void,
+        ) -> *const c_void;
+        fn CFRelease(cf: *const c_void);
+        static kCFTypeDictionaryKeyCallBacks: c_void;
+        static kCFTypeDictionaryValueCallBacks: c_void;
+        static kCFBooleanTrue: *const c_void;
+    }
+
+    // kAXTrustedCheckOptionPrompt key
+    const K_AX_TRUSTED_CHECK_OPTION_PROMPT: &[u8] = b"AXTrustedCheckOptionPrompt\0";
+
+    unsafe {
+        // Create CFString for the key
+        #[link(name = "CoreFoundation", kind = "framework")]
+        extern "C" {
+            fn CFStringCreateWithCString(
+                allocator: *const c_void,
+                c_str: *const i8,
+                encoding: u32,
+            ) -> *const c_void;
+        }
+
+        let key = CFStringCreateWithCString(
+            ptr::null(),
+            K_AX_TRUSTED_CHECK_OPTION_PROMPT.as_ptr() as *const i8,
+            0x08000100, // kCFStringEncodingUTF8
+        );
+
+        let keys = [key];
+        let values = [kCFBooleanTrue];
+
+        let options = CFDictionaryCreate(
+            ptr::null(),
+            keys.as_ptr(),
+            values.as_ptr(),
+            1,
+            &kCFTypeDictionaryKeyCallBacks,
+            &kCFTypeDictionaryValueCallBacks,
+        );
+
+        let result = AXIsProcessTrustedWithOptions(options);
+
+        CFRelease(options);
+        CFRelease(key);
+
+        app_info!("辅助功能权限请求结果: {}", if result { "已授权" } else { "等待用户授权" });
+        result
+    }
+}
+
 // Platform-agnostic handle_double_copy
 async fn handle_double_copy(app: tauri::AppHandle) {
-    println!("[hotkey] Double Copy Detected!");
+    app_info!("检测到双击复制！开始处理悬浮窗显示...");
     sleep(Duration::from_millis(100)).await; // Give system time to update clipboard
 
+    app_debug!("正在读取剪贴板内容...");
     match clipboard::read_clipboard(&app) {
         Ok(text) => {
+            app_info!("剪贴板内容读取成功，长度: {} 字符", text.len());
             if text.trim().is_empty() {
-                println!("[hotkey] Skipping: clipboard empty or whitespace only.");
+                app_info!("跳过：剪贴板内容为空或仅包含空白字符");
                 return;
             }
 
+            app_debug!("正在获取悬浮窗口...");
             if let Some(window) = app.get_webview_window("floating") {
+                app_info!("成功获取到悬浮窗口");
+
                 // 若已固定，则不改坐标；未固定时按鼠标居中定位
                 let pinned = {
                     let state: tauri::State<AppState> = app.state();
@@ -54,11 +143,15 @@ async fn handle_double_copy(app: tauri::AppHandle) {
                     state.floating_loading.lock().map(|g| *g).unwrap_or(false)
                 };
 
+                app_debug!("悬浮窗状态 - 固定: {}, 加载中: {}", pinned, loading);
+
                 if !pinned && !loading {
                     // 使用窗口真实外部尺寸（考虑缩放/装饰）进行边界收缩，避免 DPI 与多屏溢出
                     let outer_size = window
                         .outer_size()
                         .unwrap_or(tauri::PhysicalSize::new(400, 500));
+
+                    app_debug!("窗口外部尺寸: {}x{}", outer_size.width, outer_size.height);
 
                     let position = Mouse::get_mouse_position();
                     let (mut pos_x, mut pos_y) = (300i32, 200i32);
@@ -66,12 +159,15 @@ async fn handle_double_copy(app: tauri::AppHandle) {
                         pos_x = x;
                         pos_y = y;
                     }
+                    app_debug!("鼠标位置: ({}, {})", pos_x, pos_y);
 
                     #[cfg(target_os = "macos")]
                     {
                         // macOS logic: mouse_position returns Logical points.
                         // We must convert window size and monitor bounds to Logical points to match.
                         let scale_factor = window.scale_factor().unwrap_or(1.0);
+                        app_debug!("缩放因子: {}", scale_factor);
+
                         let win_w = outer_size.width as f64 / scale_factor;
                         let win_h = outer_size.height as f64 / scale_factor;
 
@@ -83,6 +179,7 @@ async fn handle_double_copy(app: tauri::AppHandle) {
                         let mut target_y = m_y - (win_h / 2.0) - 10.0;
 
                         if let Ok(monitors) = app.available_monitors() {
+                            app_debug!("可用显示器数量: {}", monitors.len());
                             // Find monitor containing mouse (using Logical bounds)
                             let monitor = monitors
                                 .iter()
@@ -120,10 +217,7 @@ async fn handle_double_copy(app: tauri::AppHandle) {
                             x: target_x,
                             y: target_y,
                         }));
-                        println!(
-                            "[hotkey] Showing floating window at Logical ({}, {})",
-                            target_x, target_y
-                        );
+                        app_info!("设置悬浮窗位置（逻辑坐标）: ({}, {})", target_x, target_y);
                     }
 
                     #[cfg(not(target_os = "macos"))]
@@ -153,8 +247,8 @@ async fn handle_double_copy(app: tauri::AppHandle) {
                                 let min_y = pos.y;
                                 let max_x = pos.x + size.width as i32 - window_width;
                                 let max_y = pos.y + size.height as i32 - window_height;
-                                target_x = target_x.clamp(min_x, cmp::max(min_x, max_x));
-                                target_y = target_y.clamp(min_y, cmp::max(min_y, max_y));
+                                target_x = target_x.clamp(min_x, std::cmp::max(min_x, max_x));
+                                target_y = target_y.clamp(min_y, std::cmp::max(min_y, max_y));
                             } else if let Some(primary) = monitors.first() {
                                 // 找不到匹配显示器时，至少落在第一个显示器范围内
                                 let pos = primary.position();
@@ -163,8 +257,8 @@ async fn handle_double_copy(app: tauri::AppHandle) {
                                 let min_y = pos.y;
                                 let max_x = pos.x + size.width as i32 - window_width;
                                 let max_y = pos.y + size.height as i32 - window_height;
-                                target_x = target_x.clamp(min_x, cmp::max(min_x, max_x));
-                                target_y = target_y.clamp(min_y, cmp::max(min_y, max_y));
+                                target_x = target_x.clamp(min_x, std::cmp::max(min_x, max_x));
+                                target_y = target_y.clamp(min_y, std::cmp::max(min_y, max_y));
                             }
                         }
 
@@ -173,33 +267,48 @@ async fn handle_double_copy(app: tauri::AppHandle) {
                             y: target_y,
                         }));
 
-                        println!(
-                            "[hotkey] Showing floating window at Physical ({}, {})",
-                            target_x, target_y
-                        );
+                        app_info!("设置悬浮窗位置（物理坐标）: ({}, {})", target_x, target_y);
                     }
                 } else {
-                    println!("[hotkey] Floating pinned, keep position");
+                    app_info!("悬浮窗已固定或加载中，保持当前位置");
                 }
 
-                let _ = window.show();
-                let _ = window.set_focus();
+                app_debug!("正在显示悬浮窗...");
+                match window.show() {
+                    Ok(_) => app_info!("悬浮窗显示成功"),
+                    Err(e) => app_error!("悬浮窗显示失败: {}", e),
+                }
+
+                match window.set_focus() {
+                    Ok(_) => app_debug!("悬浮窗获得焦点"),
+                    Err(e) => app_error!("悬浮窗获取焦点失败: {}", e),
+                }
 
                 sleep(Duration::from_millis(50)).await;
-                let _ = window.emit("floating-show", text);
+
+                app_debug!("正在发送 floating-show 事件...");
+                match window.emit("floating-show", text.clone()) {
+                    Ok(_) => app_info!("floating-show 事件发送成功，文本长度: {}", text.len()),
+                    Err(e) => app_error!("floating-show 事件发送失败: {}", e),
+                }
             } else {
-                eprintln!("[hotkey] Floating window not found!");
+                app_error!("无法获取悬浮窗口！窗口可能未创建或已销毁");
             }
         }
-        Err(e) => eprintln!("[hotkey] Failed to read clipboard: {}", e),
+        Err(e) => app_error!("读取剪贴板失败: {}", e),
     }
 }
 
 #[cfg(target_os = "macos")]
 pub fn start_listener(app: tauri::AppHandle) {
-    std::thread::spawn(move || {
-        let state = Arc::new(Mutex::new(DoubleTapState::default()));
+    app_info!("正在启动 macOS 热键监听器...");
 
+    std::thread::spawn(move || {
+        app_info!("热键监听线程已启动");
+        let state = Arc::new(Mutex::new(DoubleTapState::default()));
+        let event_count = Arc::new(Mutex::new(0u64));
+
+        app_debug!("正在创建 CGEventTap...");
         let tap = match CGEventTap::new(
             CGEventTapLocation::Session,
             CGEventTapPlacement::HeadInsertEventTap,
@@ -208,32 +317,56 @@ pub fn start_listener(app: tauri::AppHandle) {
             {
                 let app_handle = app.clone();
                 let state = state.clone();
+                let event_count = event_count.clone();
                 move |_proxy, type_, event| {
-                    let mut guard = state.lock().unwrap(); // Lock for the entire event processing.
+                    // 记录事件计数
+                    if let Ok(mut count) = event_count.lock() {
+                        *count += 1;
+                        // 每收到第一个事件时记录，证明回调在工作
+                        if *count == 1 {
+                            crate::services::logger::LOGGER.info("收到第一个键盘事件，回调函数正常工作");
+                        }
+                        // 每 100 个事件记录一次
+                        if *count % 100 == 0 {
+                            crate::services::logger::LOGGER.info(&format!("已处理 {} 个键盘事件", *count));
+                        }
+                    }
+
+                    let mut guard = state.lock().unwrap();
 
                     match type_ {
                         CGEventType::KeyDown => {
-                            let key_code = event.get_integer_value_field(9) as CGKeyCode; // kCGKeyboardEventKeycode = 9
+                            let key_code = event.get_integer_value_field(9) as CGKeyCode;
 
-                            // Use tracked modifier state
-                            // println!("[hotkey] KeyDown: code={}, ctrl_state={}, meta_state={}", key_code, guard.ctrl_down, guard.meta_down);
+                            // 记录所有按键（仅用于调试）
+                            crate::services::logger::LOGGER.debug(&format!(
+                                "KeyDown: keycode={}, meta={}, ctrl={}",
+                                key_code, guard.meta_down, guard.ctrl_down
+                            ));
 
                             if key_code == KEY_C {
+                                crate::services::logger::LOGGER.info(&format!(
+                                    "检测到 C 键按下，meta={}, ctrl={}",
+                                    guard.meta_down, guard.ctrl_down
+                                ));
+
                                 if guard.ctrl_down || guard.meta_down {
-                                    // Use tracked state
                                     let now = Instant::now();
 
                                     let is_double = guard.last_c_press.map_or(false, |prev| {
                                         let diff = now.duration_since(prev);
-                                        // println!("[hotkey] Time since last press: {:?}", diff);
+                                        crate::services::logger::LOGGER.debug(&format!(
+                                            "距离上次 Cmd+C 时间: {:?}ms",
+                                            diff.as_millis()
+                                        ));
                                         diff <= Duration::from_millis(450)
                                     });
 
                                     if !is_double {
-                                        // println!("[hotkey] First Cmd+C detected");
+                                        crate::services::logger::LOGGER.info("检测到第一次 Cmd/Ctrl+C");
                                         guard.last_c_press = Some(now);
                                     } else {
-                                        // println!("[hotkey] Second Cmd+C detected! Triggering...");
+                                        crate::services::logger::LOGGER.info("检测到双击 Cmd/Ctrl+C！触发悬浮翻译...");
                                         guard.last_c_press = None;
 
                                         let app_clone = app_handle.clone();
@@ -241,18 +374,29 @@ pub fn start_listener(app: tauri::AppHandle) {
                                             handle_double_copy(app_clone).await;
                                         });
                                     }
+                                } else {
+                                    crate::services::logger::LOGGER.debug("C 键按下但没有修饰键，忽略");
                                 }
                             }
                         }
                         CGEventType::FlagsChanged => {
                             let flags = event.get_flags();
+                            let old_meta = guard.meta_down;
+                            let old_ctrl = guard.ctrl_down;
+
                             guard.ctrl_down = flags.contains(CGEventFlags::CGEventFlagControl);
                             guard.meta_down = flags.contains(CGEventFlags::CGEventFlagCommand);
-                            // println!("[hotkey] FlagsChanged: ctrl={}, meta={}", guard.ctrl_down, guard.meta_down);
-                            // Also reset double tap state if modifiers are released
+
+                            // 只在状态变化时记录
+                            if old_meta != guard.meta_down || old_ctrl != guard.ctrl_down {
+                                crate::services::logger::LOGGER.debug(&format!(
+                                    "修饰键状态变化: meta={}, ctrl={}",
+                                    guard.meta_down, guard.ctrl_down
+                                ));
+                            }
+
                             if !guard.ctrl_down && !guard.meta_down {
                                 guard.last_c_press = None;
-                                // println!("[hotkey] Modifiers released, reset double tap state.");
                             }
                         }
                         _ => {}
@@ -262,15 +406,55 @@ pub fn start_listener(app: tauri::AppHandle) {
             },
         ) {
             Ok(tap) => {
-                println!("[hotkey] Event tap created successfully");
+                app_info!("CGEventTap 创建成功！热键监听已就绪");
                 tap
             }
             Err(e) => {
-                eprintln!("[hotkey] Failed to create event tap: {:?}", e);
+                // EventTap 创建失败，说明没有辅助功能权限
+                app_error!("CGEventTap 创建失败: {:?}", e);
+                app_error!("这通常表示应用没有辅助功能权限");
+
+                // 请求权限（弹出系统设置）
+                app_info!("正在请求辅助功能权限...");
+                let _ = prompt_accessibility_permission();
+
+                // 发送事件通知前端
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.emit("accessibility-permission-needed", ());
+                }
+
+                // 启动后台轮询，等待权限授予后重试
+                app_info!("启动权限检测轮询（每3秒检查一次）...");
+                let app_clone = app.clone();
+                std::thread::spawn(move || {
+                    loop {
+                        std::thread::sleep(Duration::from_secs(3));
+
+                        // 尝试创建 EventTap 来检测权限是否已授予
+                        let test_tap = CGEventTap::new(
+                            CGEventTapLocation::Session,
+                            CGEventTapPlacement::HeadInsertEventTap,
+                            CGEventTapOptions::ListenOnly,
+                            vec![CGEventType::KeyDown],
+                            |_proxy, _type, event| Some(event.to_owned()),
+                        );
+
+                        if test_tap.is_ok() {
+                            app_info!("检测到辅助功能权限已授予！正在重新启动监听器...");
+                            drop(test_tap);
+                            // 重新启动监听器
+                            start_listener(app_clone);
+                            return;
+                        } else {
+                            app_debug!("辅助功能权限仍未授予，继续等待...");
+                        }
+                    }
+                });
                 return;
             }
         };
 
+        app_debug!("正在创建 RunLoop Source...");
         let loop_source = tap
             .mach_port
             .create_runloop_source(0)
@@ -278,17 +462,25 @@ pub fn start_listener(app: tauri::AppHandle) {
         let current_loop = CFRunLoop::get_current();
         current_loop.add_source(&loop_source, unsafe { kCFRunLoopCommonModes });
 
+        app_debug!("正在启用 EventTap...");
         tap.enable();
+
+        app_info!("热键监听器已启动并运行中，等待键盘事件...");
         CFRunLoop::run_current();
+
+        // 如果 RunLoop 退出，记录日志
+        app_error!("CFRunLoop 已退出！热键监听可能已停止工作");
     });
 }
 
 #[cfg(target_os = "windows")]
 pub fn start_listener(app: tauri::AppHandle) {
+    app_info!("正在启动 Windows 热键监听器...");
     let state = Arc::new(Mutex::new(DoubleTapState::default()));
     let app_handle = app.clone();
 
     std::thread::spawn(move || {
+        app_info!("Windows 热键监听线程已启动");
         let state = state.clone();
         if let Err(e) = listen(move |event: Event| {
             let mut guard = state.lock().unwrap();
@@ -307,15 +499,15 @@ pub fn start_listener(app: tauri::AppHandle) {
                         let now = Instant::now();
                         let is_double = guard.last_c_press.map_or(false, |prev| {
                             let diff = now.duration_since(prev);
-                            println!("[hotkey] Time since last press: {:?}", diff);
+                            app_debug!("距离上次按键时间: {:?}", diff);
                             diff <= Duration::from_millis(450)
                         });
 
                         if !is_double {
-                            println!("[hotkey] First Ctrl/Cmd+C detected");
+                            app_debug!("检测到第一次 Ctrl+C");
                             guard.last_c_press = Some(now);
                         } else {
-                            println!("[hotkey] Second Ctrl/Cmd+C detected! Triggering...");
+                            app_info!("检测到双击 Ctrl+C！触发悬浮翻译...");
                             guard.last_c_press = None;
 
                             let app_clone = app_handle.clone();
@@ -337,12 +529,12 @@ pub fn start_listener(app: tauri::AppHandle) {
                 _ => {}
             }
         }) {
-            eprintln!("[hotkey] Listener error on Windows: {:?}", e);
+            app_error!("Windows 热键监听出错: {:?}", e);
         }
     });
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 pub fn start_listener(_app: tauri::AppHandle) {
-    println!("Hotkey listener not implemented for this OS yet in this custom module. (Linux/Other)");
+    app_info!("热键监听在此操作系统上尚未实现 (Linux/Other)");
 }

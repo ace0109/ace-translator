@@ -45,6 +45,17 @@
         "fullscreen": false,
         "visible": false,
         "url": "index.html#/settings"
+      },
+      {
+        "label": "logs",
+        "title": "应用日志",
+        "width": 900,
+        "height": 600,
+        "resizable": true,
+        "minimizable": true,
+        "fullscreen": false,
+        "visible": false,
+        "url": "index.html#/logs"
       }
     ],
     "security": {
@@ -60,6 +71,11 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "macOS": {
+      "entitlements": "entitlements.plist",
+      "minimumSystemVersion": "10.13",
+      "signingIdentity": "-"
+    }
   }
 }

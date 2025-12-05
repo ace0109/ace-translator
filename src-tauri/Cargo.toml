@@ -33,8 +33,12 @@ image = "0.25"
 mouse_position = "0.1.4"
 rdev = "0.5"
 futures = "0.3"
+lazy_static = "1.4"
+chrono = "0.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics = "0.23"
 core-foundation = "0.9"
 libc = "0.2"
+cocoa = "0.25"
+objc = "0.2"
