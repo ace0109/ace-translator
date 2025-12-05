@@ -1,5 +1,5 @@
 # 使用官方 Rust 镜像
-FROM rust:1.88
+FROM rust:1.91
 
 # 设置环境变量避免交互式安装
 ENV DEBIAN_FRONTEND=noninteractive
