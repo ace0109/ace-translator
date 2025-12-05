@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use crate::config::prompts;
 
 const API_URL: &str = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
-const DEFAULT_MODEL: &str = "GLM-4.6";
+const DEFAULT_MODEL: &str = "glm-4-flashx";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ChatResponse {
