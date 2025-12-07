@@ -11,9 +11,11 @@ pub use services::logger;
 
 pub struct AppState {
     pub db: sqlx::SqlitePool,
-    pub floating_pinned: std::sync::Arc<std::sync::Mutex<bool>>,
-    pub floating_loading: std::sync::Arc<std::sync::Mutex<bool>>,
-    pub floating_abort_handles: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<u64, futures::future::AbortHandle>>>,
+    pub main_pinned: std::sync::Arc<std::sync::Mutex<bool>>,
+    pub main_loading: std::sync::Arc<std::sync::Mutex<bool>>,
+    pub main_abort_handles: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<u64, std::collections::HashMap<String, futures::future::AbortHandle>>>>,
+    pub hotkey_double_copy_enabled: std::sync::Arc<std::sync::Mutex<bool>>,
+    pub hotkey_alt_space_enabled: std::sync::Arc<std::sync::Mutex<bool>>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -51,11 +53,36 @@ pub fn run() {
                 };
 
                 handle.manage(AppState {
-                    db: pool,
-                    floating_pinned: std::sync::Arc::new(std::sync::Mutex::new(false)),
-                    floating_loading: std::sync::Arc::new(std::sync::Mutex::new(false)),
-                    floating_abort_handles: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+                    db: pool.clone(),
+                    main_pinned: std::sync::Arc::new(std::sync::Mutex::new(false)),
+                    main_loading: std::sync::Arc::new(std::sync::Mutex::new(false)),
+                    main_abort_handles: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+                    hotkey_double_copy_enabled: std::sync::Arc::new(std::sync::Mutex::new(true)),
+                    hotkey_alt_space_enabled: std::sync::Arc::new(std::sync::Mutex::new(true)),
                 });
+
+                // Load hotkey config from DB
+                let double_copy: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = 'hotkey_double_copy'")
+                    .fetch_optional(&pool)
+                    .await
+                    .unwrap_or(None);
+                let alt_space: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = 'hotkey_alt_space'")
+                    .fetch_optional(&pool)
+                    .await
+                    .unwrap_or(None);
+
+                if let Some(state) = handle.try_state::<AppState>() {
+                    if let Some(val) = double_copy {
+                        if let Ok(mut guard) = state.hotkey_double_copy_enabled.lock() {
+                            *guard = val == "true";
+                        }
+                    }
+                    if let Some(val) = alt_space {
+                        if let Ok(mut guard) = state.hotkey_alt_space_enabled.lock() {
+                            *guard = val == "true";
+                        }
+                    }
+                }
             });
 
             // Start passive key listener (using platform-specific impl)
@@ -65,11 +92,11 @@ pub fn run() {
             // 3. Initialize System Tray
             crate::app_info!("正在初始化系统托盘...");
             use tauri::menu::{MenuBuilder, MenuItemBuilder};
-            let show = MenuItemBuilder::new("打开主窗口").id("show").build(app)?;
+            let show = MenuItemBuilder::new("打开翻译窗口").id("show").build(app)?;
             let settings = MenuItemBuilder::new("打开设置").id("settings").build(app)?;
-            let logs = MenuItemBuilder::new("查看日志").id("logs").build(app)?;
+            let history = MenuItemBuilder::new("历史与日志").id("history").build(app)?;
             let quit = MenuItemBuilder::new("退出").id("quit").build(app)?;
-            let menu = MenuBuilder::new(app).items(&[&show, &settings, &logs, &quit]).build()?;
+            let menu = MenuBuilder::new(app).items(&[&show, &settings, &history, &quit]).build()?;
 
             // Load and decode icon
             let icon_bytes = include_bytes!("../icons/icon.png");
@@ -86,7 +113,9 @@ pub fn run() {
                     match event.id().as_ref() {
                         "quit" => app.exit(0),
                         "show" => {
+                            // 屏幕居中显示主窗口
                             if let Some(window) = app.get_webview_window("main") {
+                                let _ = commands::system::center_window_on_screen(&window);
                                 let _ = window.show();
                                 let _ = window.set_focus();
                             }
@@ -97,8 +126,8 @@ pub fn run() {
                                 let _ = window.set_focus();
                             }
                         }
-                        "logs" => {
-                            if let Some(window) = app.get_webview_window("logs") {
+                        "history" => {
+                            if let Some(window) = app.get_webview_window("history") {
                                 let _ = window.show();
                                 let _ = window.set_focus();
                             }
@@ -109,7 +138,9 @@ pub fn run() {
                 .on_tray_icon_event(|tray, event| {
                     if let tauri::tray::TrayIconEvent::Click { button, .. } = event {
                         if button == tauri::tray::MouseButton::Left {
+                            // 托盘左键点击：屏幕居中显示主窗口
                             if let Some(window) = tray.app_handle().get_webview_window("main") {
+                                let _ = commands::system::center_window_on_screen(&window);
                                 let _ = window.show();
                                 let _ = window.set_focus();
                             }
@@ -132,63 +163,70 @@ pub fn run() {
         })
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => {
-                if window.label() == "main" {
-                    window.hide().unwrap();
-                    api.prevent_close();
-                }
-                if window.label() == "settings" {
-                    window.hide().unwrap();
-                    api.prevent_close();
-                }
-                if window.label() == "floating" {
-                    window.hide().unwrap();
-                    api.prevent_close();
-                }
-                if window.label() == "logs" {
+                // 所有窗口关闭时只隐藏不退出
+                if window.label() == "main" || window.label() == "settings" || window.label() == "history" {
                     window.hide().unwrap();
                     api.prevent_close();
                 }
             }
             WindowEvent::Focused(false) => {
-                if window.label() == "floating" {
-                    // 如果未固定，则失焦隐藏；若已固定，则不隐藏
-                    let app_handle = window.app_handle();
-                    let state: tauri::State<AppState> = app_handle.state();
-                    let pinned = state
-                        .floating_pinned
-                        .lock()
-                        .map(|g| *g)
-                        .unwrap_or(false);
-                    let loading = state
-                        .floating_loading
-                        .lock()
-                        .map(|g| *g)
-                        .unwrap_or(false);
-                    if !pinned && !loading {
-                        let _ = window.hide();
-                    }
+                if window.label() == "main" {
+                    // 使用延迟检测，避免 Tauri drag-region bug 导致的短暂失焦
+                    // See: https://github.com/tauri-apps/tauri/issues/10767
+                    let app_handle = window.app_handle().clone();
+                    let window_clone = window.clone();
+
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+                        // 如果窗口已重新获得焦点，说明是点击了窗口内部（如标题栏）
+                        if window_clone.is_focused().unwrap_or(false) {
+                            return;
+                        }
+
+                        let state: tauri::State<AppState> = app_handle.state();
+                        let pinned = state.main_pinned.lock().map(|g| *g).unwrap_or(false);
+                        let loading = state.main_loading.lock().map(|g| *g).unwrap_or(false);
+
+                        if !pinned && !loading {
+                            let _ = window_clone.hide();
+                        }
+                    });
                 }
             }
             _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             commands::translation::translate_text,
+            commands::translation::translate_multi,
+            commands::translation::translate_multi_stream_individual,
+            commands::translation::cancel_translation,
+            commands::translation::cancel_all_translations,
             commands::settings::save_settings,
             commands::settings::get_settings,
-            commands::system::show_floating_window,
+            commands::settings::get_provider_configs,
+            commands::settings::save_provider_config,
+            commands::settings::test_provider,
+            commands::settings::get_hotkey_config,
+            commands::settings::save_hotkey_config,
+            commands::system::show_main_window,
+            commands::system::show_main_window_centered,
             commands::system::show_settings_window,
-            commands::system::show_logs_window,
+            commands::system::show_history_window,
             commands::system::hide_window,
-            commands::system::set_floating_pinned,
-            commands::system::get_floating_pinned,
-            commands::system::set_floating_loading,
-            commands::system::get_floating_loading,
+            commands::system::set_main_pinned,
+            commands::system::get_main_pinned,
+            commands::system::set_main_loading,
+            commands::system::get_main_loading,
+            commands::system::resize_main_window,
             commands::system::cache_stats,
             commands::system::clear_cache,
             commands::system::check_accessibility,
             commands::system::request_accessibility,
             commands::system::get_logs,
             commands::system::clear_logs,
+            commands::system::get_translation_history,
+            commands::system::delete_history_entry,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

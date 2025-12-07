@@ -24,7 +24,7 @@ tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.11", features = ["json", "stream"] }
 sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite"] }
 ring = "0.16"
 base64 = "0.21"
@@ -34,6 +34,7 @@ image = "0.25"
 mouse_position = "0.1.4"
 rdev = "0.5"
 futures = "0.3"
+async-trait = "0.1"
 lazy_static = "1.4"
 chrono = "0.4"
 

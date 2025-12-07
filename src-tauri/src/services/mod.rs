@@ -1,4 +1,4 @@
-pub mod zhipu;
+pub mod ai;
 pub mod encryption;
 pub mod database;
 pub mod clipboard;

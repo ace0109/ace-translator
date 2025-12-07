@@ -3,28 +3,25 @@ import "./assets/index.css";
 import App from "./App.vue";
 import { createPinia } from "pinia";
 import { createRouter, createWebHashHistory } from "vue-router";
+import i18n from "./locales";
 
 const pinia = createPinia();
 
 const routes = [
   {
-    path: "/",
-    component: () => import("./components/layout/MainLayout.vue"),
-    children: [
-      { path: "", name: "Translator", component: () => import("./components/features/Translator.vue") },
-      { path: "settings", name: "Settings", component: () => import("./components/features/Settings.vue") },
-    ],
+    path: "/main",
+    name: "Main",
+    component: () => import("./components/features/MainTranslator.vue"),
   },
   {
-    path: "/floating",
-    name: "Floating",
-    component: () => import("./components/layout/FloatingLayout.vue"),
-    children: [{ path: "", name: "FloatingTranslator", component: () => import("./components/features/FloatingTranslator.vue") }],
+    path: "/settings",
+    name: "Settings",
+    component: () => import("./components/features/Settings.vue"),
   },
   {
-    path: "/logs",
-    name: "Logs",
-    component: () => import("./components/features/LogViewer.vue"),
+    path: "/history",
+    name: "History",
+    component: () => import("./components/features/HistoryAndLogs.vue"),
   },
 ];
 
@@ -33,4 +30,4 @@ const router = createRouter({
   routes,
 });
 
-createApp(App).use(pinia).use(router).mount("#app");
+createApp(App).use(pinia).use(router).use(i18n).mount("#app");

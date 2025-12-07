@@ -1,15 +1,12 @@
 <script setup lang="ts">
 import { onMounted } from 'vue';
 import { useSettingsStore } from './stores/settings';
-import { useTranslationStore } from './stores/translation';
 import { isTauriEnv } from './utils/env';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import Toaster from './components/common/Toaster.vue';
-import { defaultCommonTargets } from './constants/languages';
 
 const settingsStore = useSettingsStore();
-const translationStore = useTranslationStore();
 
 // Apply default theme immediately to avoid light flash before settings load
 if ((settingsStore.theme || 'dark') === 'dark') {
@@ -24,11 +21,10 @@ onMounted(async () => {
   try {
     const settings: any = await invoke('get_settings');
     if (settings) {
-      settingsStore.setApiKey(settings.api_key);
       settingsStore.setTheme(settings.theme || 'dark');
-      settingsStore.setCommonTargetLanguages(settings.common_target_languages || defaultCommonTargets);
-      translationStore.setTargetLang(settings.target_language || 'zh-CN');
-      
+      settingsStore.setPrimaryTarget(settings.primary_target || 'zh-CN');
+      settingsStore.setSecondaryTarget(settings.secondary_target || 'en');
+
       // Apply dark mode class to html element
       if ((settings.theme || 'dark') === 'dark') {
         document.documentElement.classList.add('dark');
@@ -44,11 +40,10 @@ onMounted(async () => {
   await listen<any>('settings-changed', (event) => {
     const s = event.payload;
     if (s) {
-      settingsStore.setApiKey(s.api_key);
       settingsStore.setTheme(s.theme || 'dark');
-      settingsStore.setCommonTargetLanguages(s.common_target_languages || defaultCommonTargets);
-      translationStore.setTargetLang(s.target_language || 'zh-CN');
-      
+      settingsStore.setPrimaryTarget(s.primary_target || 'zh-CN');
+      settingsStore.setSecondaryTarget(s.secondary_target || 'en');
+
       // Sync dark mode class
       if ((s.theme || 'dark') === 'dark') {
         document.documentElement.classList.add('dark');

@@ -1,200 +1,366 @@
 <template>
   <div class="p-6">
     <div class="mx-auto flex max-w-3xl flex-col gap-6">
+      <!-- 服务商配置 -->
+      <Card>
+        <CardHeader>
+          <CardTitle>{{ t('settings.providerConfig.title') }}</CardTitle>
+          <CardDescription>{{ t('settings.providerConfig.description') }}</CardDescription>
+        </CardHeader>
+        <CardContent class="space-y-4">
+          <!-- 服务商 Tab 栏 -->
+          <div class="flex border-b">
+            <button
+              v-for="provider in providers"
+              :key="provider.name"
+              class="relative px-4 py-2 text-sm font-medium transition-colors"
+              :class="[
+                activeProvider === provider.name
+                  ? 'text-primary'
+                  : 'text-muted-foreground hover:text-foreground'
+              ]"
+              @click="activeProvider = provider.name"
+            >
+              {{ provider.display_name }}
+              <span
+                v-if="provider.config.enabled"
+                class="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-green-500"
+              />
+              <span
+                v-if="activeProvider === provider.name"
+                class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"
+              />
+            </button>
+          </div>
+
+          <!-- 当前服务商配置 -->
+          <div v-if="currentProvider" class="space-y-4 pt-2">
+            <!-- 启用开关 -->
+            <div class="flex items-center justify-between">
+              <div>
+                <Label>{{ t('settings.providerConfig.enable') }} {{ currentProvider.display_name }}</Label>
+                <p class="text-xs text-muted-foreground">
+                  {{ 
+                    currentProvider.name === 'zhipu' 
+                      ? t('settings.providerConfig.zhipuForceEnabled') 
+                      : t('settings.providerConfig.enableDesc') 
+                  }}
+                </p>
+              </div>
+              <Switch
+                :checked="currentProvider.name === 'zhipu' ? true : currentProvider.config.enabled"
+                :disabled="currentProvider.name === 'zhipu'"
+                @update:checked="(v) => updateProviderEnabled(v)"
+              />
+            </div>
+
+            <!-- API Key -->
+            <div v-if="currentProvider.name !== 'ollama'" class="space-y-2">
+              <Label :for="`${currentProvider.name}-apikey`">{{ t('settings.providerConfig.apiKey') }}</Label>
+              <div class="flex gap-2">
+                <Input
+                  :id="`${currentProvider.name}-apikey`"
+                  v-model="currentProvider.config.api_key"
+                  type="password"
+                  :placeholder="t('settings.providerConfig.apiKeyPlaceholder', { provider: currentProvider.display_name })"
+                />
+              </div>
+              <p v-if="currentProvider.name === 'zhipu' && currentProvider.config.model.includes('flash')" class="text-xs text-muted-foreground">
+                {{ t('settings.providerConfig.zhipuFlashHint') }}
+              </p>
+            </div>
+
+            <!-- 模型选择 -->
+            <div class="space-y-2">
+              <Label :for="`${currentProvider.name}-model`">{{ t('settings.providerConfig.model') }}</Label>
+              <Select
+                :id="`${currentProvider.name}-model`"
+                :model-value="currentProvider.config.model || currentProvider.available_models[0]"
+                :options="currentProvider.available_models.map(m => ({ label: m, value: m }))"
+                :placeholder="t('settings.providerConfig.selectModel')"
+                @update:model-value="(v) => updateProviderModel(v)"
+              />
+              <p v-if="currentProvider.name === 'ollama'" class="text-xs text-muted-foreground">
+                {{ t('settings.providerConfig.ollamaModelHint') }}
+              </p>
+            </div>
+
+            <!-- 自定义 API 地址（仅 OpenAI 和 Ollama） -->
+            <div v-if="currentProvider.supports_base_url" class="space-y-2">
+              <Label :for="`${currentProvider.name}-baseurl`">{{ t('settings.providerConfig.baseUrl') }}</Label>
+              <Input
+                :id="`${currentProvider.name}-baseurl`"
+                :model-value="currentProvider.config.base_url || ''"
+                :placeholder="currentProvider.name === 'ollama' ? 'http://localhost:11434/api/chat' : 'https://api.openai.com/v1/chat/completions'"
+                @update:model-value="updateProviderBaseUrl"
+              />
+              <p class="text-xs text-muted-foreground">
+                {{ currentProvider.name === 'ollama' ? t('settings.providerConfig.baseUrlHintOllama') : t('settings.providerConfig.baseUrlHintOpenAI') }}
+              </p>
+            </div>
+
+            <!-- 保存和测试按钮 -->
+            <div class="flex gap-2 pt-2">
+              <Button
+                :disabled="isSavingProvider"
+                @click="saveCurrentProvider"
+              >
+                <Loader2 v-if="isSavingProvider" class="mr-2 h-4 w-4 animate-spin" />
+                {{ t('settings.providerConfig.saveConfig') }}
+              </Button>
+              <Button
+                variant="outline"
+                :disabled="isTestingProvider"
+                @click="testCurrentProvider"
+              >
+                <Loader2 v-if="isTestingProvider" class="mr-2 h-4 w-4 animate-spin" />
+                {{ t('settings.providerConfig.testConnection') }}
+              </Button>
+            </div>
+
+            <!-- 测试结果 -->
+            <div v-if="testResult" class="space-y-2 rounded-md border p-3">
+              <div class="flex items-center gap-2">
+                <span
+                  :class="testResult.success ? 'text-green-500' : 'text-red-500'"
+                  class="text-sm font-medium"
+                >
+                  {{ testResult.success ? t('settings.providerConfig.connectionSuccess') : t('settings.providerConfig.connectionFailed') }}
+                </span>
+                <span class="text-xs text-muted-foreground">
+                  HTTP {{ testResult.status_code }} | {{ testResult.response_time_ms }}ms
+                </span>
+              </div>
+              <div v-if="testResult.error" class="text-xs text-red-500">
+                {{ testResult.error }}
+              </div>
+              <details v-if="testResult.request_payload" class="text-xs">
+                <summary class="cursor-pointer text-muted-foreground hover:text-foreground">
+                  {{ t('settings.providerConfig.viewRequestPayload') }}
+                </summary>
+                <pre class="mt-2 max-h-48 overflow-auto rounded bg-muted/40 p-2">{{ JSON.stringify(testResult.request_payload, null, 2) }}</pre>
+              </details>
+              <details v-if="testResult.raw_response" class="text-xs">
+                <summary class="cursor-pointer text-muted-foreground hover:text-foreground">
+                  {{ t('settings.providerConfig.viewRawResponse') }}
+                </summary>
+                <pre class="mt-2 max-h-48 overflow-auto rounded bg-muted/40 p-2">{{ JSON.stringify(testResult.raw_response, null, 2) }}</pre>
+              </details>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <!-- 基础设置 -->
       <Card>
         <CardHeader class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <CardTitle>基础信息</CardTitle>
-            <CardDescription>确保 API Key 已填写，否则无法调用翻译服务。</CardDescription>
+            <CardTitle>{{ t('settings.basic.title') }}</CardTitle>
+            <CardDescription>{{ t('settings.basic.description') }}</CardDescription>
           </div>
           <Button variant="outline" :disabled="isSaving" @click="resetDefaults">
-            恢复默认设置
+            {{ t('settings.basic.resetDefaults') }}
           </Button>
         </CardHeader>
         <CardContent class="space-y-4">
+          <!-- 界面语言 -->
           <div class="space-y-2">
-            <Label for="apiKey">AI API Key</Label>
-            <div class="flex gap-2">
-              <Input
-                id="apiKey"
-                v-model="settingsForm.apiKey"
-                type="password"
-                placeholder="输入 API Key"
-              />
-              <Button
-                :disabled="isSaving || !settingsForm.apiKey.trim()"
-                class="gap-2"
-                @click="saveApiKey"
-              >
-                <Loader2 v-if="isSaving" class="h-4 w-4 animate-spin" />
-                <span>{{ isSaving ? '保存中...' : '保存 API Key' }}</span>
-              </Button>
-            </div>
-          </div>
-          <div class="space-y-2">
-            <Label for="targetLanguage">默认目标语言</Label>
-            <LanguageSelector
-              id="targetLanguage"
-              v-model="settingsForm.targetLanguage"
-              placeholder="选择默认目标语言"
-              @update:modelValue="saveTargetLanguage"
+            <Label>{{ t('settings.interfaceLanguage.label') }}</Label>
+            <Select
+              :model-value="locale"
+              :options="localeOptions"
+              @update:model-value="changeLocale"
             />
+            <p class="text-xs text-muted-foreground">{{ t('settings.interfaceLanguage.description') }}</p>
           </div>
+
           <div class="space-y-2">
-            <Label>主题</Label>
+            <Label>{{ t('settings.basic.theme') }}</Label>
             <div class="flex flex-wrap gap-2">
               <Button
                 :variant="settingsForm.theme === 'light' ? 'default' : 'outline'"
                 size="sm"
                 @click="updateTheme('light')"
               >
-                浅色
+                {{ t('settings.basic.themeLight') }}
               </Button>
               <Button
                 :variant="settingsForm.theme === 'dark' ? 'default' : 'outline'"
                 size="sm"
                 @click="updateTheme('dark')"
               >
-                深色
+                {{ t('settings.basic.themeDark') }}
               </Button>
             </div>
-            <p class="text-xs text-muted-foreground">主题会同步到窗口并在启动时自动应用。</p>
+            <p class="text-xs text-muted-foreground">{{ t('settings.basic.themeHint') }}</p>
           </div>
-          <div class="space-y-2">
-            <div class="flex items-center justify-between">
-              <Label>常用目标语言</Label>
-              <span class="text-xs text-muted-foreground">{{ commonTargetCount }}/{{ maxCommonTargets }}</span>
-            </div>
-            <p class="text-xs text-muted-foreground">用于主窗口缓存与悬浮窗多语言翻译，最多选择 {{ maxCommonTargets }} 个。</p>
-            <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              <label
-                v-for="opt in languageOptions.filter(o => o.value !== 'auto')"
-                :key="opt.value"
-                class="flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm hover:border-ring"
-              >
-                <input
-                  type="checkbox"
-                  class="h-4 w-4 accent-primary"
-                  :value="opt.value"
-                  :checked="settingsForm.commonTargetLanguages.includes(opt.value)"
-                  @change="toggleCommonTarget(opt.value)"
-                />
-                <span class="text-foreground">{{ opt.label }}</span>
-              </label>
-            </div>
-          </div>
-        </CardContent>
-    </Card>
 
-    <Card>
-      <CardHeader>
-        <CardTitle>API 连通性测试</CardTitle>
-          <CardDescription>查看发送给 AI 的参数和响应结果，便于排查。</CardDescription>
+
+        </CardContent>
+      </Card>
+
+      <!-- 翻译语言配置 -->
+      <Card>
+        <CardHeader>
+          <CardTitle>{{ t('settings.language.title') }}</CardTitle>
+          <CardDescription>{{ t('settings.language.description') }}</CardDescription>
         </CardHeader>
-        <CardContent class="space-y-3">
-          <div class="flex items-center gap-3">
-            <Button :disabled="testLoading" class="gap-2" @click="runApiTest">
-              <Loader2 v-if="testLoading" class="h-4 w-4 animate-spin" />
-              <span>{{ testLoading ? '测试中...' : '开始测试' }}</span>
-            </Button>
-            <p class="text-xs text-muted-foreground">使用常用目标语言作为批量目标，示例文本：This is a connectivity test...</p>
+        <CardContent class="space-y-4">
+          <div class="rounded-md border bg-muted/30 p-3">
+            <p class="text-sm text-muted-foreground">
+              <strong>{{ t('settings.language.howItWorks') }}</strong>{{ t('settings.language.howItWorksDesc') }}
+            </p>
           </div>
-          <div class="grid gap-3 md:grid-cols-2">
-            <div class="space-y-1">
-              <p class="text-xs font-semibold text-muted-foreground">请求参数</p>
-              <pre class="max-h-56 overflow-auto rounded-md bg-muted/40 p-3 text-xs">{{ testPayload || '尚未发送' }}</pre>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div class="space-y-2">
+              <Label for="primaryTarget">{{ t('settings.language.primaryLanguage') }}</Label>
+              <LanguageSelector
+                id="primaryTarget"
+                v-model="settingsForm.primaryTarget"
+                :placeholder="t('settings.language.selectLanguage')"
+                @update:modelValue="savePrimaryTarget"
+              />
+              <p class="text-xs text-muted-foreground">{{ t('settings.language.primaryLanguageHint') }}</p>
             </div>
-            <div class="space-y-1">
-              <p class="text-xs font-semibold text-muted-foreground">响应结果</p>
-              <pre class="max-h-56 overflow-auto rounded-md bg-muted/40 p-3 text-xs">
-{{ testError ? `错误：${testError}` : (testResponse || '等待响应...') }}
-              </pre>
+            <div class="space-y-2">
+              <Label for="secondaryTarget">{{ t('settings.language.secondaryLanguage') }}</Label>
+              <LanguageSelector
+                id="secondaryTarget"
+                v-model="settingsForm.secondaryTarget"
+                :placeholder="t('settings.language.selectLanguage')"
+                @update:modelValue="saveSecondaryTarget"
+              />
+              <p class="text-xs text-muted-foreground">{{ t('settings.language.secondaryLanguageHint') }}</p>
             </div>
           </div>
         </CardContent>
       </Card>
 
+      <!-- 快捷键配置 -->
       <Card>
         <CardHeader>
-          <CardTitle>缓存</CardTitle>
-          <CardDescription>查看并清理翻译缓存（保存在本地 SQLite）。</CardDescription>
+          <CardTitle>{{ t('settings.hotkey.title') }}</CardTitle>
+          <CardDescription>{{ t('settings.hotkey.description') }}</CardDescription>
         </CardHeader>
-        <CardContent class="space-y-3">
-          <div class="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
-            <span class="text-muted-foreground">缓存条数</span>
-            <span class="font-mono text-foreground">{{ cacheCount }}</span>
-          </div>
-          <div class="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
-            <span class="text-muted-foreground">缓存大小（字节）</span>
-            <span class="font-mono text-foreground">{{ cacheSize }}</span>
-          </div>
-        </CardContent>
-        <CardFooter class="justify-end gap-2">
-          <Button variant="secondary" :disabled="isSaving" @click="loadCacheStats">刷新</Button>
-          <Button variant="destructive" :disabled="isSaving" @click="clearCache">清空缓存</Button>
-        </CardFooter>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>调试工具</CardTitle>
-          <CardDescription>用于排查问题的调试功能。</CardDescription>
-        </CardHeader>
-        <CardContent class="space-y-3">
+        <CardContent class="space-y-4">
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm font-medium">应用日志</p>
-              <p class="text-xs text-muted-foreground">查看应用运行日志，用于排查悬浮翻译等功能问题。</p>
+              <p class="text-sm font-medium">{{ t('settings.hotkey.doubleCopy') }}</p>
+              <p class="text-xs text-muted-foreground">
+                {{ isMac ? t('settings.hotkey.doubleCopyDescMac') : t('settings.hotkey.doubleCopyDescWin') }}
+              </p>
             </div>
-            <Button variant="outline" @click="openLogsWindow">
-              查看日志
-            </Button>
+            <Switch
+              :checked="hotkeyConfig.double_copy_enabled"
+              @update:checked="(v) => updateHotkeyConfig('double_copy_enabled', v)"
+            />
+          </div>
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-medium">{{ t('settings.hotkey.altSpace') }}</p>
+              <p class="text-xs text-muted-foreground">
+                {{ isMac ? t('settings.hotkey.altSpaceDescMac') : t('settings.hotkey.altSpaceDescWin') }}
+              </p>
+            </div>
+            <Switch
+              :checked="hotkeyConfig.alt_space_enabled"
+              @update:checked="(v) => updateHotkeyConfig('alt_space_enabled', v)"
+            />
           </div>
         </CardContent>
       </Card>
+
+
+
+
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, watch, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { Loader2 } from 'lucide-vue-next'
 import { useSettingsStore } from '@/stores/settings'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { Select } from '@/components/ui/select'
 import LanguageSelector from '../common/LanguageSelector.vue'
-import { languageOptions, defaultCommonTargets } from '@/constants/languages'
 import { showToast } from '@/lib/toast'
 import { isTauriEnv } from '@/utils/env'
+import { supportedLocales, saveLocale, type SupportedLocale } from '@/locales'
+
+const { t, locale } = useI18n()
+
+interface ProviderConfig {
+  provider_name: string
+  enabled: boolean
+  api_key: string
+  model: string
+  base_url: string | null
+}
+
+interface ProviderInfo {
+  name: string
+  display_name: string
+  config: ProviderConfig
+  available_models: string[]
+  supports_base_url: boolean
+}
+
+interface ApiTestResponse {
+  success: boolean
+  status_code: number
+  response_time_ms: number
+  raw_response: any
+  request_payload: any
+  error: string | null
+  provider: string
+  model: string
+}
 
 interface SettingsForm {
-  apiKey: string
-  targetLanguage: string
   theme: 'light' | 'dark'
-  commonTargetLanguages: string[]
+  primaryTarget: string
+  secondaryTarget: string
+}
+
+interface HotkeyConfig {
+  double_copy_enabled: boolean
+  alt_space_enabled: boolean
 }
 
 const settingsStore = useSettingsStore()
 const settingsForm = ref<SettingsForm>({
-  apiKey: '',
-  targetLanguage: 'zh-CN',
   theme: 'dark',
-  commonTargetLanguages: defaultCommonTargets.slice(),
+  primaryTarget: 'zh-CN',
+  secondaryTarget: 'en',
 })
 
-const isSaving = ref(false)
-const maxCommonTargets = 5
-const commonTargetCount = computed(() => settingsForm.value.commonTargetLanguages.length)
-const testLoading = ref(false)
-const testPayload = ref('')
-const testResponse = ref('')
-const testError = ref('')
+const hotkeyConfig = ref<HotkeyConfig>({
+  double_copy_enabled: true,
+  alt_space_enabled: true,
+})
 
-const cacheCount = ref(0)
-const cacheSize = ref(0)
+// 检测是否为 macOS
+const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
+
+const isSaving = ref(false)
+
+// 服务商相关状态
+const providers = ref<ProviderInfo[]>([])
+const activeProvider = ref('zhipu')
+const isSavingProvider = ref(false)
+const isTestingProvider = ref(false)
+const testResult = ref<ApiTestResponse | null>(null)
+
+const currentProvider = computed(() => {
+  return providers.value.find(p => p.name === activeProvider.value)
+})
 
 const applyThemeClass = (theme: string) => {
   if (theme === 'dark') {
@@ -204,111 +370,182 @@ const applyThemeClass = (theme: string) => {
   }
 }
 
-const loadCacheStats = async () => {
+const loadProviderConfigs = async () => {
   if (!isTauriEnv()) return
   try {
-    const [count, size] = (await invoke('cache_stats')) as [number, number]
-    cacheCount.value = count
-    cacheSize.value = size
+    const configs = await invoke<ProviderInfo[]>('get_provider_configs')
+    providers.value = configs
+    if (configs.length > 0 && !configs.find(p => p.name === activeProvider.value)) {
+      activeProvider.value = configs[0].name
+    }
   } catch (error: any) {
     const errMsg = error?.message || String(error)
-    showToast(`读取缓存失败：${errMsg}`, 'error')
+    showToast(`${t('settings.loadFailed')}：${errMsg}`, 'error')
   }
 }
 
-const clearCache = async () => {
-  if (!isTauriEnv()) return
-  try {
-    await invoke('clear_cache')
-    cacheCount.value = 0
-    cacheSize.value = 0
-    showToast('缓存已清理', 'info')
-  } catch (error: any) {
-    const errMsg = error?.message || String(error)
-    showToast(`清理缓存失败：${errMsg}`, 'error')
+const updateProviderEnabled = (enabled: boolean) => {
+  if (currentProvider.value) {
+    if (currentProvider.value.name === 'zhipu') {
+      currentProvider.value.config.enabled = true
+      return
+    }
+    currentProvider.value.config.enabled = enabled
   }
 }
+
+const updateProviderModel = (model: string) => {
+  if (currentProvider.value) {
+    currentProvider.value.config.model = model
+  }
+}
+
+const updateProviderBaseUrl = (url: string | number) => {
+  if (currentProvider.value) {
+    currentProvider.value.config.base_url = typeof url === 'string' && url ? url : null
+  }
+}
+
+const saveCurrentProvider = async () => {
+  if (!isTauriEnv() || !currentProvider.value) return
+  isSavingProvider.value = true
+  try {
+    await invoke('save_provider_config', {
+      config: {
+        provider_name: currentProvider.value.name,
+        enabled: currentProvider.value.config.enabled,
+        api_key: currentProvider.value.config.api_key,
+        model: currentProvider.value.config.model || currentProvider.value.available_models[0],
+        base_url: currentProvider.value.config.base_url || null,
+      }
+    })
+    showToast(t('settings.providerConfig.configSaved', { provider: currentProvider.value.display_name }), 'info')
+  } catch (error: any) {
+    const errMsg = error?.message || String(error)
+    showToast(`${t('settings.providerConfig.saveFailed')}：${errMsg}`, 'error')
+  } finally {
+    isSavingProvider.value = false
+  }
+}
+
+const testCurrentProvider = async () => {
+  if (!isTauriEnv() || !currentProvider.value) return
+  isTestingProvider.value = true
+  testResult.value = null
+  try {
+    const result = await invoke<ApiTestResponse>('test_provider', {
+      config: {
+        provider_name: currentProvider.value.name,
+        enabled: true,
+        api_key: currentProvider.value.config.api_key,
+        model: currentProvider.value.config.model || currentProvider.value.available_models[0],
+        base_url: currentProvider.value.config.base_url || null,
+      }
+    })
+    testResult.value = result
+    if (result.success) {
+      showToast(`${currentProvider.value.display_name} ${t('settings.providerConfig.connectionSuccess')}`, 'info')
+    } else {
+      if (result.status_code === 401) {
+        showToast(`${t('settings.providerConfig.connectionFailed')}：API Key 无效或过期，请检查配置`, 'error')
+      } else {
+        showToast(`${currentProvider.value.display_name} ${t('settings.providerConfig.connectionFailed')}`, 'error')
+      }
+    }
+  } catch (error: any) {
+    const errMsg = error?.message || String(error)
+    testResult.value = {
+      success: false,
+      status_code: 0,
+      response_time_ms: 0,
+      raw_response: null,
+      request_payload: null,
+      error: errMsg,
+      provider: currentProvider.value.name,
+      model: currentProvider.value.config.model,
+    }
+    showToast(`${t('settings.providerConfig.testFailed')}：${errMsg}`, 'error')
+  } finally {
+    isTestingProvider.value = false
+  }
+}
+
+
 
 const loadSettings = async () => {
   if (!isTauriEnv()) return
   try {
     const loadedSettings: any = await invoke('get_settings')
-    settingsForm.value.apiKey = loadedSettings.api_key || ''
-    settingsForm.value.targetLanguage = loadedSettings.target_language || 'zh-CN'
     settingsForm.value.theme = loadedSettings.theme || 'dark'
-    settingsForm.value.commonTargetLanguages =
-      loadedSettings.common_target_languages?.slice(0, maxCommonTargets) ||
-      defaultCommonTargets.slice()
-    settingsStore.setApiKey(settingsForm.value.apiKey)
+    settingsForm.value.primaryTarget = loadedSettings.primary_target || 'zh-CN'
+    settingsForm.value.secondaryTarget = loadedSettings.secondary_target || 'en'
     settingsStore.setTheme(settingsForm.value.theme)
-    settingsStore.setCommonTargetLanguages(settingsForm.value.commonTargetLanguages)
+    settingsStore.setPrimaryTarget(settingsForm.value.primaryTarget)
+    settingsStore.setSecondaryTarget(settingsForm.value.secondaryTarget)
     applyThemeClass(settingsForm.value.theme)
-    loadCacheStats()
   } catch (error: any) {
     const errMsg = error?.message || String(error)
-    showToast(`加载设置失败：${errMsg}`, 'error')
+    showToast(`${t('settings.loadFailed')}：${errMsg}`, 'error')
+  }
+}
+
+const loadHotkeyConfig = async () => {
+  if (!isTauriEnv()) return
+  try {
+    const config = await invoke<HotkeyConfig>('get_hotkey_config')
+    hotkeyConfig.value = config
+  } catch (error: any) {
+    console.error('加载快捷键配置失败:', error)
+  }
+}
+
+const updateHotkeyConfig = async (key: keyof HotkeyConfig, value: boolean) => {
+  hotkeyConfig.value[key] = value
+  if (!isTauriEnv()) return
+  try {
+    await invoke('save_hotkey_config', { config: hotkeyConfig.value })
+    showToast(t('settings.hotkey.configSaved'), 'info')
+  } catch (error: any) {
+    const errMsg = error?.message || String(error)
+    showToast(`${t('settings.saveFailed')}：${errMsg}`, 'error')
   }
 }
 
 const saveSettings = async () => {
   if (!isTauriEnv()) {
-    showToast('当前不在 Tauri 环境，无法保存', 'error')
+    showToast(t('settings.notInTauri'), 'error')
     return
   }
   isSaving.value = true
   try {
     await invoke('save_settings', {
       settings: {
-        api_key: settingsForm.value.apiKey,
-        target_language: settingsForm.value.targetLanguage,
+        api_key: '', // Legacy support
         theme: settingsForm.value.theme,
-        common_target_languages: settingsForm.value.commonTargetLanguages,
+        primary_target: settingsForm.value.primaryTarget,
+        secondary_target: settingsForm.value.secondaryTarget,
       },
     })
-    settingsStore.setApiKey(settingsForm.value.apiKey)
     settingsStore.setTheme(settingsForm.value.theme)
-    settingsStore.setCommonTargetLanguages(settingsForm.value.commonTargetLanguages)
+    settingsStore.setPrimaryTarget(settingsForm.value.primaryTarget)
+    settingsStore.setSecondaryTarget(settingsForm.value.secondaryTarget)
     applyThemeClass(settingsForm.value.theme)
-    showToast('设置已保存', 'info')
+    showToast(t('settings.saved'), 'info')
   } catch (error: any) {
     const errMsg = error?.message || String(error)
-    showToast(`保存失败：${errMsg}`, 'error')
+    showToast(`${t('settings.saveFailed')}：${errMsg}`, 'error')
   } finally {
     isSaving.value = false
   }
 }
 
-const saveApiKey = async () => {
-  if (!isTauriEnv()) {
-    showToast('当前不在 Tauri 环境，无法保存', 'error')
-    return
-  }
-  if (!settingsForm.value.apiKey.trim()) {
-    showToast('请填写 API Key 后再保存', 'error')
-    return
-  }
-  isSaving.value = true
-  try {
-    await invoke('save_settings', {
-      settings: {
-        api_key: settingsForm.value.apiKey,
-        target_language: settingsForm.value.targetLanguage,
-        theme: settingsForm.value.theme,
-        common_target_languages: settingsForm.value.commonTargetLanguages,
-      },
-    })
-    settingsStore.setApiKey(settingsForm.value.apiKey)
-    showToast('API Key 已保存', 'info')
-  } catch (error: any) {
-    const errMsg = error?.message || String(error)
-    showToast(`保存失败：${errMsg}`, 'error')
-  } finally {
-    isSaving.value = false
-  }
+const savePrimaryTarget = async (lang: string) => {
+  settingsForm.value.primaryTarget = lang
+  await saveSettings()
 }
 
-const saveTargetLanguage = async (lang: string) => {
-  settingsForm.value.targetLanguage = lang
+const saveSecondaryTarget = async (lang: string) => {
+  settingsForm.value.secondaryTarget = lang
   await saveSettings()
 }
 
@@ -320,7 +557,8 @@ const updateTheme = async (theme: 'light' | 'dark') => {
 
 onMounted(() => {
   loadSettings()
-  loadCacheStats()
+  loadProviderConfigs()
+  loadHotkeyConfig()
 })
 
 watch(
@@ -328,86 +566,33 @@ watch(
   (theme) => applyThemeClass(theme),
 )
 
-const toggleCommonTarget = (lang: string) => {
-  const exists = settingsForm.value.commonTargetLanguages.includes(lang)
-  if (exists) {
-    settingsForm.value.commonTargetLanguages = settingsForm.value.commonTargetLanguages.filter((l) => l !== lang)
-  } else {
-    if (settingsForm.value.commonTargetLanguages.length >= maxCommonTargets) {
-      showToast(`最多选择 ${maxCommonTargets} 个常用语言`, 'error')
-      return
-    }
-    settingsForm.value.commonTargetLanguages = [...settingsForm.value.commonTargetLanguages, lang]
-  }
-  saveSettings()
-}
-
-const commonTargets = () => {
-  return (
-    settingsForm.value.commonTargetLanguages.slice(0, maxCommonTargets) ??
-    defaultCommonTargets.slice()
-  )
-}
+// 切换服务商时清除测试结果
+watch(activeProvider, () => {
+  testResult.value = null
+})
 
 const resetDefaults = async () => {
   settingsForm.value = {
-    apiKey: '',
-    targetLanguage: 'zh-CN',
     theme: 'dark',
-    commonTargetLanguages: defaultCommonTargets.slice(0, maxCommonTargets),
+    primaryTarget: 'zh-CN',
+    secondaryTarget: 'en',
   }
   applyThemeClass(settingsForm.value.theme)
   await saveSettings()
-  showToast('已恢复默认设置', 'info')
+  showToast(t('settings.basic.defaultsRestored'), 'info')
 }
 
-const runApiTest = async () => {
-  testLoading.value = true
-  testError.value = ''
-  testPayload.value = ''
-  testResponse.value = ''
 
-  if (!isTauriEnv()) {
-    testLoading.value = false
-    testError.value = '当前不在 Tauri 环境，无法调用 API'
-    return
-  }
 
-  if (!settingsForm.value.apiKey.trim()) {
-    testLoading.value = false
-    testError.value = '请先填写并保存 API Key'
-    return
-  }
+// 语言切换选项
+const localeOptions = computed(() =>
+  supportedLocales.map(l => ({ label: l.name, value: l.code }))
+)
 
-  const payload = {
-    text: 'This is a connectivity test for Ace Translator.',
-    targetLangs: commonTargets(),
-  }
-  testPayload.value = JSON.stringify(payload, null, 2)
-
-  try {
-    const res: any = await invoke('translate_text', payload)
-    testResponse.value = JSON.stringify(res, null, 2)
-    showToast('API 测试成功', 'info')
-  } catch (error: any) {
-    const errMsg = error?.message || String(error)
-    testError.value = errMsg
-    showToast(`API 测试失败：${errMsg}`, 'error')
-  } finally {
-    testLoading.value = false
-  }
-}
-
-const openLogsWindow = async () => {
-  if (!isTauriEnv()) {
-    showToast('当前不在 Tauri 环境', 'error')
-    return
-  }
-  try {
-    await invoke('show_logs_window')
-  } catch (error: any) {
-    const errMsg = error?.message || String(error)
-    showToast(`打开日志窗口失败：${errMsg}`, 'error')
-  }
+// 切换界面语言
+const changeLocale = (newLocale: string) => {
+  locale.value = newLocale as SupportedLocale
+  saveLocale(newLocale as SupportedLocale)
+  showToast(t('settings.interfaceLanguage.saved'), 'info')
 }
 </script>
