@@ -24,11 +24,14 @@ struct DoubleTapState {
     last_c_press: Option<Instant>,
     ctrl_down: bool, // For Windows/Linux Ctrl, macOS Ctrl
     meta_down: bool, // For macOS Command, Windows/Linux Meta
+    alt_down: bool,  // For Alt/Option key
 }
 
 // Key Codes for macOS
 #[cfg(target_os = "macos")]
 const KEY_C: CGKeyCode = 0x08;
+#[cfg(target_os = "macos")]
+const KEY_SPACE: CGKeyCode = 0x31;
 
 /// 检查 macOS 辅助功能权限
 #[cfg(target_os = "macos")]
@@ -114,9 +117,53 @@ pub fn prompt_accessibility_permission() -> bool {
     }
 }
 
+// Alt+Space 快捷键处理：屏幕居中显示主窗口
+async fn handle_alt_space(app: tauri::AppHandle) {
+    // 检查是否启用
+    {
+        let state: tauri::State<AppState> = app.state();
+        let enabled = state.hotkey_alt_space_enabled.lock().map(|g| *g).unwrap_or(true);
+        if !enabled {
+            app_debug!("Alt+Space 快捷键已禁用，跳过");
+            return;
+        }
+    }
+
+    app_info!("检测到 Alt+Space 快捷键！正在显示主窗口...");
+
+    if let Some(window) = app.get_webview_window("main") {
+        // 使用屏幕居中显示
+        if let Err(e) = crate::commands::system::center_window_on_screen(&window) {
+            app_error!("窗口居中失败: {}", e);
+        }
+
+        match window.show() {
+            Ok(_) => app_info!("主窗口显示成功"),
+            Err(e) => app_error!("主窗口显示失败: {}", e),
+        }
+
+        match window.set_focus() {
+            Ok(_) => app_debug!("主窗口获得焦点"),
+            Err(e) => app_error!("主窗口获取焦点失败: {}", e),
+        }
+    } else {
+        app_error!("无法获取主窗口");
+    }
+}
+
 // Platform-agnostic handle_double_copy
 async fn handle_double_copy(app: tauri::AppHandle) {
-    app_info!("检测到双击复制！开始处理悬浮窗显示...");
+    // 检查是否启用
+    {
+        let state: tauri::State<AppState> = app.state();
+        let enabled = state.hotkey_double_copy_enabled.lock().map(|g| *g).unwrap_or(true);
+        if !enabled {
+            app_debug!("双击复制翻译已禁用，跳过");
+            return;
+        }
+    }
+
+    app_info!("检测到双击复制！开始处理主窗口显示...");
     sleep(Duration::from_millis(100)).await; // Give system time to update clipboard
 
     app_debug!("正在读取剪贴板内容...");
@@ -128,22 +175,22 @@ async fn handle_double_copy(app: tauri::AppHandle) {
                 return;
             }
 
-            app_debug!("正在获取悬浮窗口...");
-            if let Some(window) = app.get_webview_window("floating") {
-                app_info!("成功获取到悬浮窗口");
+            app_debug!("正在获取主窗口...");
+            if let Some(window) = app.get_webview_window("main") {
+                app_info!("成功获取到主窗口");
 
                 // 若已固定，则不改坐标；未固定时按鼠标居中定位
                 let pinned = {
                     let state: tauri::State<AppState> = app.state();
-                    state.floating_pinned.lock().map(|g| *g).unwrap_or(false)
+                    state.main_pinned.lock().map(|g| *g).unwrap_or(false)
                 };
 
                 let loading = {
                     let state: tauri::State<AppState> = app.state();
-                    state.floating_loading.lock().map(|g| *g).unwrap_or(false)
+                    state.main_loading.lock().map(|g| *g).unwrap_or(false)
                 };
 
-                app_debug!("悬浮窗状态 - 固定: {}, 加载中: {}", pinned, loading);
+                app_debug!("主窗口状态 - 固定: {}, 加载中: {}", pinned, loading);
 
                 if !pinned && !loading {
                     // 使用窗口真实外部尺寸（考虑缩放/装饰）进行边界收缩，避免 DPI 与多屏溢出
@@ -217,7 +264,7 @@ async fn handle_double_copy(app: tauri::AppHandle) {
                             x: target_x,
                             y: target_y,
                         }));
-                        app_info!("设置悬浮窗位置（逻辑坐标）: ({}, {})", target_x, target_y);
+                        app_info!("设置主窗口位置（逻辑坐标）: ({}, {})", target_x, target_y);
                     }
 
                     #[cfg(not(target_os = "macos"))]
@@ -267,32 +314,32 @@ async fn handle_double_copy(app: tauri::AppHandle) {
                             y: target_y,
                         }));
 
-                        app_info!("设置悬浮窗位置（物理坐标）: ({}, {})", target_x, target_y);
+                        app_info!("设置主窗口位置（物理坐标）: ({}, {})", target_x, target_y);
                     }
                 } else {
-                    app_info!("悬浮窗已固定或加载中，保持当前位置");
+                    app_info!("主窗口已固定或加载中，保持当前位置");
                 }
 
-                app_debug!("正在显示悬浮窗...");
+                app_debug!("正在显示主窗口...");
                 match window.show() {
-                    Ok(_) => app_info!("悬浮窗显示成功"),
-                    Err(e) => app_error!("悬浮窗显示失败: {}", e),
+                    Ok(_) => app_info!("主窗口显示成功"),
+                    Err(e) => app_error!("主窗口显示失败: {}", e),
                 }
 
                 match window.set_focus() {
-                    Ok(_) => app_debug!("悬浮窗获得焦点"),
-                    Err(e) => app_error!("悬浮窗获取焦点失败: {}", e),
+                    Ok(_) => app_debug!("主窗口获得焦点"),
+                    Err(e) => app_error!("主窗口获取焦点失败: {}", e),
                 }
 
                 sleep(Duration::from_millis(50)).await;
 
-                app_debug!("正在发送 floating-show 事件...");
-                match window.emit("floating-show", text.clone()) {
-                    Ok(_) => app_info!("floating-show 事件发送成功，文本长度: {}", text.len()),
-                    Err(e) => app_error!("floating-show 事件发送失败: {}", e),
+                app_debug!("正在发送 main-show 事件...");
+                match window.emit("main-show", text.clone()) {
+                    Ok(_) => app_info!("main-show 事件发送成功，文本长度: {}", text.len()),
+                    Err(e) => app_error!("main-show 事件发送失败: {}", e),
                 }
             } else {
-                app_error!("无法获取悬浮窗口！窗口可能未创建或已销毁");
+                app_error!("无法获取主窗口！窗口可能未创建或已销毁");
             }
         }
         Err(e) => app_error!("读取剪贴板失败: {}", e),
@@ -340,11 +387,20 @@ pub fn start_listener(app: tauri::AppHandle) {
 
                             // 记录所有按键（仅用于调试）
                             crate::services::logger::LOGGER.debug(&format!(
-                                "KeyDown: keycode={}, meta={}, ctrl={}",
-                                key_code, guard.meta_down, guard.ctrl_down
+                                "KeyDown: keycode={}, meta={}, ctrl={}, alt={}",
+                                key_code, guard.meta_down, guard.ctrl_down, guard.alt_down
                             ));
 
-                            if key_code == KEY_C {
+                            // Alt/Option + Space 快捷键
+                            if key_code == KEY_SPACE && guard.alt_down {
+                                crate::services::logger::LOGGER.info("检测到 Option+Space 快捷键！");
+                                let app_clone = app_handle.clone();
+                                tauri::async_runtime::spawn(async move {
+                                    handle_alt_space(app_clone).await;
+                                });
+                            }
+                            // Cmd/Ctrl + C 双击检测
+                            else if key_code == KEY_C {
                                 crate::services::logger::LOGGER.info(&format!(
                                     "检测到 C 键按下，meta={}, ctrl={}",
                                     guard.meta_down, guard.ctrl_down
@@ -383,15 +439,17 @@ pub fn start_listener(app: tauri::AppHandle) {
                             let flags = event.get_flags();
                             let old_meta = guard.meta_down;
                             let old_ctrl = guard.ctrl_down;
+                            let old_alt = guard.alt_down;
 
                             guard.ctrl_down = flags.contains(CGEventFlags::CGEventFlagControl);
                             guard.meta_down = flags.contains(CGEventFlags::CGEventFlagCommand);
+                            guard.alt_down = flags.contains(CGEventFlags::CGEventFlagAlternate);
 
                             // 只在状态变化时记录
-                            if old_meta != guard.meta_down || old_ctrl != guard.ctrl_down {
+                            if old_meta != guard.meta_down || old_ctrl != guard.ctrl_down || old_alt != guard.alt_down {
                                 crate::services::logger::LOGGER.debug(&format!(
-                                    "修饰键状态变化: meta={}, ctrl={}",
-                                    guard.meta_down, guard.ctrl_down
+                                    "修饰键状态变化: meta={}, ctrl={}, alt={}",
+                                    guard.meta_down, guard.ctrl_down, guard.alt_down
                                 ));
                             }
 
@@ -490,6 +548,15 @@ pub fn start_listener(app: tauri::AppHandle) {
                         guard.ctrl_down = true;
                     } else if matches!(key, Key::MetaLeft | Key::MetaRight) {
                         guard.meta_down = true;
+                    } else if matches!(key, Key::Alt | Key::AltGr) {
+                        guard.alt_down = true;
+                    } else if key == Key::Space && guard.alt_down {
+                        // Alt + Space 快捷键
+                        app_info!("检测到 Alt+Space 快捷键！");
+                        let app_clone = app_handle.clone();
+                        tauri::async_runtime::spawn(async move {
+                            handle_alt_space(app_clone).await;
+                        });
                     } else if key == Key::KeyC {
                         // Rdev has Key::KeyC directly
                         if !(guard.ctrl_down || guard.meta_down) {
@@ -524,6 +591,8 @@ pub fn start_listener(app: tauri::AppHandle) {
                     } else if matches!(key, Key::MetaLeft | Key::MetaRight) {
                         guard.meta_down = false;
                         guard.last_c_press = None; // Reset double tap state if modifier released
+                    } else if matches!(key, Key::Alt | Key::AltGr) {
+                        guard.alt_down = false;
                     }
                 }
                 _ => {}

@@ -6,6 +6,7 @@ version = 4
 name = "ace-translator"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "base64 0.21.7",
  "chrono",
  "cocoa 0.25.0",
@@ -4384,10 +4385,12 @@ dependencies = [
  "system-configuration",
  "tokio",
  "tokio-native-tls",
+ "tokio-util",
  "tower-service",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "wasm-streams",
  "web-sys",
  "winreg 0.50.0",
 ]

@@ -13,27 +13,19 @@
     "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "ace-translator",
-        "width": 1000,
-        "height": 700,
-        "minWidth": 800,
-        "resizable": true,
-        "minimizable": true,
-        "fullscreen": false
-      },
-      {
-        "label": "floating",
-        "title": "Floating Translator",
+        "label": "main",
+        "title": "Ace Translator",
         "width": 500,
-        "height": 500,
-        "alwaysOnTop": true,
+        "height": 400,
+        "minWidth": 400,
+        "minHeight": 200,
         "resizable": false,
         "minimizable": false,
         "maximizable": false,
         "fullscreen": false,
         "visible": false,
         "decorations": false,
-        "url": "index.html#/floating"
+        "url": "index.html#/main"
       },
       {
         "label": "settings",
@@ -47,15 +39,15 @@
         "url": "index.html#/settings"
       },
       {
-        "label": "logs",
-        "title": "应用日志",
+        "label": "history",
+        "title": "历史与日志",
         "width": 900,
         "height": 600,
         "resizable": true,
         "minimizable": true,
         "fullscreen": false,
         "visible": false,
-        "url": "index.html#/logs"
+        "url": "index.html#/history"
       }
     ],
     "security": {

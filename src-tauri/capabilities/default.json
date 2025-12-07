@@ -1,10 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-capability",
-  "windows": [ "main", "floating", "settings" ],
+  "windows": [ "main", "settings", "history" ],
   "permissions": [
     "core:app:default",
     "core:window:default",
+    "core:window:allow-start-dragging",
     "core:webview:default",
     "core:event:default",
     "core:tray:default",
