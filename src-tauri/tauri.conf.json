@@ -42,7 +42,7 @@
       },
       {
         "label": "history",
-        "title": "历史与日志",
+        "title": "历史",
         "width": 900,
         "height": 600,
         "resizable": true,
@@ -50,6 +50,28 @@
         "fullscreen": false,
         "visible": false,
         "url": "index.html#/history"
+      },
+      {
+        "label": "logs",
+        "title": "应用日志",
+        "width": 900,
+        "height": 600,
+        "resizable": true,
+        "minimizable": true,
+        "fullscreen": false,
+        "visible": false,
+        "url": "index.html#/logs"
+      },
+      {
+        "label": "about",
+        "title": "关于",
+        "width": 420,
+        "height": 360,
+        "resizable": false,
+        "minimizable": true,
+        "fullscreen": false,
+        "visible": false,
+        "url": "index.html#/about"
       }
     ],
     "security": {

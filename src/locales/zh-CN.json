@@ -202,5 +202,15 @@
     "he": "עברית",
     "hu": "Magyar",
     "ro": "Română"
+  },
+  "about": {
+    "title": "关于",
+    "subtitle": "Ace Translator",
+    "version": "版本",
+    "devMode": "开发者模式",
+    "enabled": "已启用",
+    "disabled": "未启用",
+    "devModeHint": "连续点击版本号 7 次解锁开发者模式，托盘将显示日志入口。",
+    "devModeUnlocked": "开发者模式已开启"
   }
 }

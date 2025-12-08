@@ -16,6 +16,8 @@ pub struct AppState {
     pub main_abort_handles: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<u64, std::collections::HashMap<String, futures::future::AbortHandle>>>>,
     pub cancelled_requests: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<u64>>>,
     pub locale: std::sync::Arc<std::sync::Mutex<String>>,
+    pub dev_mode: std::sync::Arc<std::sync::Mutex<bool>>,
+    pub tray_icon: std::sync::Arc<std::sync::Mutex<Option<tauri::tray::TrayIcon>>>,
     pub hotkey_double_copy_enabled: std::sync::Arc<std::sync::Mutex<bool>>,
     pub hotkey_alt_space_enabled: std::sync::Arc<std::sync::Mutex<bool>>,
 }
@@ -66,6 +68,8 @@ pub fn run() {
                     main_abort_handles: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
                     cancelled_requests: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
                     locale: std::sync::Arc::new(std::sync::Mutex::new("zh-CN".to_string())),
+                    dev_mode: std::sync::Arc::new(std::sync::Mutex::new(false)),
+                    tray_icon: std::sync::Arc::new(std::sync::Mutex::new(None)),
                     hotkey_double_copy_enabled: std::sync::Arc::new(std::sync::Mutex::new(true)),
                     hotkey_alt_space_enabled: std::sync::Arc::new(std::sync::Mutex::new(true)),
                 });
@@ -76,6 +80,14 @@ pub fn run() {
                     .await
                     .unwrap_or(None);
                 let alt_space: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = 'hotkey_alt_space'")
+                    .fetch_optional(&pool)
+                    .await
+                    .unwrap_or(None);
+                let locale_val: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = 'locale'")
+                    .fetch_optional(&pool)
+                    .await
+                    .unwrap_or(None);
+                let dev_mode_val: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = 'dev_mode'")
                     .fetch_optional(&pool)
                     .await
                     .unwrap_or(None);
@@ -91,6 +103,16 @@ pub fn run() {
                             *guard = val == "true";
                         }
                     }
+                    if let Some(val) = locale_val {
+                        if let Ok(mut guard) = state.locale.lock() {
+                            *guard = val;
+                        }
+                    }
+                    if let Some(val) = dev_mode_val {
+                        if let Ok(mut guard) = state.dev_mode.lock() {
+                            *guard = val == "true";
+                        }
+                    }
                 }
             });
 
@@ -100,17 +122,14 @@ pub fn run() {
 
             // 3. Initialize System Tray
             crate::app_info!("正在初始化系统托盘...");
-            use tauri::menu::{MenuBuilder, MenuItemBuilder};
-            let show_label = if cfg!(target_os = "macos") {
-                "打开翻译窗口 (Option+Space)"
-            } else {
-                "打开翻译窗口 (Alt+Space)"
+            let dev_mode_enabled = {
+                if let Some(state) = app.try_state::<AppState>() {
+                    state.dev_mode.lock().map(|g| *g).unwrap_or(false)
+                } else {
+                    false
+                }
             };
-            let show = MenuItemBuilder::new(show_label).id("show").build(app)?;
-            let settings = MenuItemBuilder::new("打开设置").id("settings").build(app)?;
-            let history = MenuItemBuilder::new("历史与日志").id("history").build(app)?;
-            let quit = MenuItemBuilder::new("退出").id("quit").build(app)?;
-            let menu = MenuBuilder::new(app).items(&[&show, &settings, &history, &quit]).build()?;
+            let menu = crate::utils::tray::build_tray_menu(&app.handle(), dev_mode_enabled)?;
 
             // Load and decode icon
             let icon_bytes = include_bytes!("../icons/icon.png");
@@ -120,7 +139,7 @@ pub fn run() {
             let rgba = icon_img.into_rgba8().into_vec();
             let icon = tauri::image::Image::new_owned(rgba, width, height);
 
-            let _tray = tauri::tray::TrayIconBuilder::new()
+            let tray = tauri::tray::TrayIconBuilder::new()
                 .icon(icon)
                 .menu(&menu)
                 .on_menu_event(|app, event| {
@@ -146,6 +165,20 @@ pub fn run() {
                                 let _ = window.set_focus();
                             }
                         }
+                        "logs" => {
+                            if let Some(window) = app.get_webview_window("logs") {
+                                let _ = commands::system::center_window_on_screen(&window);
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "about" => {
+                            if let Some(window) = app.get_webview_window("about") {
+                                let _ = commands::system::center_window_on_screen(&window);
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
                         _ => {}
                     }
                 })
@@ -157,6 +190,12 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            if let Some(state) = app.try_state::<AppState>() {
+                if let Ok(mut guard) = state.tray_icon.lock() {
+                    *guard = Some(tray);
+                }
+            }
 
             crate::app_info!("系统托盘初始化完成");
 
@@ -173,7 +212,7 @@ pub fn run() {
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => {
                 // 所有窗口关闭时只隐藏不退出
-                if window.label() == "main" || window.label() == "settings" || window.label() == "history" {
+                if window.label() == "main" || window.label() == "settings" || window.label() == "history" || window.label() == "logs" || window.label() == "about" {
                     window.hide().unwrap();
                     api.prevent_close();
                 }
@@ -222,6 +261,8 @@ pub fn run() {
             commands::system::show_main_window_centered,
             commands::system::show_settings_window,
             commands::system::show_history_window,
+            commands::system::show_logs_window,
+            commands::system::show_about_window,
             commands::system::hide_window,
             commands::system::set_main_pinned,
             commands::system::get_main_pinned,
@@ -234,6 +275,8 @@ pub fn run() {
             commands::system::request_accessibility,
             commands::system::get_logs,
             commands::system::clear_logs,
+            commands::system::get_app_info,
+            commands::system::enable_dev_mode,
             commands::system::get_translation_history,
             commands::system::delete_history_entry,
         ]);

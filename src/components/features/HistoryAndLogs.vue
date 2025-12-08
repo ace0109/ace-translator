@@ -1,6 +1,6 @@
 <template>
   <Tabs v-model="activeTab" class="flex min-h-screen flex-col bg-background text-foreground">
-    <TabsList class="grid w-full grid-cols-3 rounded-none border-b bg-card px-2 py-2">
+    <TabsList class="grid w-full grid-cols-2 rounded-none border-b bg-card px-2 py-2">
       <TabsTrigger v-for="tab in tabs" :key="tab.id" :value="tab.id" class="h-9">
         {{ tab.label }}
       </TabsTrigger>
@@ -80,92 +80,21 @@
         </CardContent>
       </Card>
     </TabsContent>
-
-    <TabsContent value="logs" class="flex-1 overflow-hidden">
-      <Card class="m-4 flex h-[calc(100vh-140px)] flex-col">
-        <CardHeader class="flex flex-row items-center justify-between gap-2">
-          <CardTitle class="text-base">{{ t('history.appLogs.title') }}</CardTitle>
-          <div class="flex gap-2">
-            <Button @click="refreshLogs" variant="outline" size="sm">
-              {{ t('common.refresh') }}
-            </Button>
-            <Button @click="clearLogs" variant="destructive" size="sm">
-              {{ t('history.appLogs.clear') }}
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent class="flex flex-1 flex-col gap-3 overflow-hidden">
-          <div
-            ref="logContainer"
-            class="flex-1 overflow-auto rounded-lg border bg-muted/30 p-4 font-mono text-sm"
-            @scroll="handleScroll"
-          >
-            <div v-if="logs.length === 0" class="py-8 text-center text-muted-foreground">
-              {{ t('history.appLogs.empty') }}
-            </div>
-            <div v-else>
-              <div
-                v-for="(log, index) in logs"
-                :key="index"
-                class="border-b border-border py-1 last:border-0"
-                :class="{
-                  'text-destructive': log.level === 'ERROR',
-                  'text-yellow-500 dark:text-yellow-400': log.level === 'DEBUG',
-                  'text-green-600 dark:text-green-400': log.level === 'INFO',
-                }"
-              >
-                <span class="text-muted-foreground">{{ log.timestamp }}</span>
-                <Badge :variant="log.level === 'ERROR' ? 'destructive' : 'secondary'" class="mx-2 px-2 py-0 text-[10px]">
-                  {{ log.level }}
-                </Badge>
-                <span>{{ log.message }}</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
-            <span>{{ t('history.appLogs.total', { count: logs.length }) }} | {{ t('history.appLogs.autoRefresh') }}{{ autoRefresh ? t('history.appLogs.enabled') : t('history.appLogs.disabled') }}</span>
-            <div class="flex items-center gap-4">
-              <div class="flex items-center gap-2">
-                <Checkbox id="auto-scroll" v-model:checked="autoScroll" />
-                <Label for="auto-scroll" class="cursor-pointer">
-                  {{ t('history.appLogs.autoScroll') }}
-                </Label>
-              </div>
-              <div class="flex items-center gap-2">
-                <Checkbox id="auto-refresh" v-model:checked="autoRefresh" />
-                <Label for="auto-refresh" class="cursor-pointer">
-                  {{ t('history.appLogs.autoRefresh') }}
-                </Label>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </TabsContent>
   </Tabs>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, watch, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ChevronDown, Copy, Trash2 } from 'lucide-vue-next'
 import { showToast } from '@/lib/toast'
 
 const { t } = useI18n()
-
-interface LogEntry {
-  timestamp: string
-  level: string
-  message: string
-}
 
 interface HistoryEntry {
   id: number
@@ -181,66 +110,12 @@ interface HistoryEntry {
 const tabs = computed(() => [
   { id: 'history', label: t('history.tabs.history') },
   { id: 'cache', label: t('history.tabs.cache') },
-  { id: 'logs', label: t('history.tabs.logs') },
 ])
 
 const activeTab = ref('history')
-const logs = ref<LogEntry[]>([])
 const history = ref<HistoryEntry[]>([])
 const expandedHistory = ref<number | null>(null)
 const cacheStats = ref({ count: 0, size: 0 })
-const autoRefresh = ref(true)
-const autoScroll = ref(true)
-const logContainer = ref<HTMLElement | null>(null)
-let refreshInterval: number | null = null
-
-// Logs functions
-async function refreshLogs() {
-  try {
-    const prevLength = logs.value.length
-    logs.value = await invoke<LogEntry[]>('get_logs')
-
-    if (autoScroll.value && logs.value.length > prevLength) {
-      await nextTick()
-      scrollToBottom()
-    }
-  } catch (e) {
-    console.error('获取日志失败:', e)
-  }
-}
-
-async function clearLogs() {
-  try {
-    await invoke('clear_logs')
-    logs.value = []
-    showToast(t('history.appLogs.cleared'), 'info')
-  } catch (e) {
-    console.error('清空日志失败:', e)
-  }
-}
-
-function scrollToBottom() {
-  if (logContainer.value) {
-    logContainer.value.scrollTop = logContainer.value.scrollHeight
-  }
-}
-
-function handleScroll() {
-  if (!logContainer.value) return
-
-  const { scrollTop, scrollHeight, clientHeight } = logContainer.value
-  const isNearBottom = scrollHeight - scrollTop - clientHeight < 50
-
-  if (!isNearBottom && autoScroll.value) {
-    autoScroll.value = false
-  }
-}
-
-watch(autoScroll, (newVal) => {
-  if (newVal) {
-    nextTick(() => scrollToBottom())
-  }
-})
 
 // Cache functions
 async function loadCacheStats() {
@@ -321,28 +196,17 @@ async function copyText(text: string) {
 }
 
 onMounted(() => {
-  refreshLogs()
   loadCacheStats()
   loadHistory()
-
-  refreshInterval = window.setInterval(() => {
-    if (autoRefresh.value && activeTab.value === 'logs') {
-      refreshLogs()
-    }
-  }, 2000)
 })
 
 onUnmounted(() => {
-  if (refreshInterval) {
-    clearInterval(refreshInterval)
-  }
+  // no-op
 })
 
 // Refresh data when tab changes
 watch(activeTab, (newTab) => {
-  if (newTab === 'logs') {
-    refreshLogs()
-  } else if (newTab === 'cache') {
+  if (newTab === 'cache') {
     loadCacheStats()
   } else if (newTab === 'history') {
     loadHistory()

@@ -202,5 +202,15 @@
     "he": "Hebrew",
     "hu": "Hungarian",
     "ro": "Romanian"
+  },
+  "about": {
+    "title": "About",
+    "subtitle": "Ace Translator",
+    "version": "Version",
+    "devMode": "Developer Mode",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "devModeHint": "Tap the version number 7 times to unlock developer mode and show Logs in tray.",
+    "devModeUnlocked": "Developer mode enabled"
   }
 }
