@@ -131,9 +131,10 @@ async fn handle_alt_space(app: tauri::AppHandle) {
     app_info!("检测到 Alt+Space 快捷键！正在显示主窗口...");
 
     if let Some(window) = app.get_webview_window("main") {
-        // 使用屏幕居中显示
-        if let Err(e) = crate::commands::system::center_window_on_screen(&window) {
+        // 使用鼠标所在屏幕居中显示，失败则回退到当前屏幕
+        if let Err(e) = crate::commands::system::center_window_on_active_screen(&window) {
             app_error!("窗口居中失败: {}", e);
+            let _ = crate::commands::system::center_window_on_screen(&window);
         }
 
         match window.show() {
@@ -192,7 +193,10 @@ async fn handle_double_copy(app: tauri::AppHandle) {
                 app_debug!("主窗口状态 - 固定: {}, 加载中: {}", pinned, loading);
 
                 if !pinned && !loading {
-                    let _ = crate::commands::system::center_window_on_screen(&window);
+                    if let Err(e) = crate::commands::system::center_window_on_active_screen(&window) {
+                        app_error!("窗口居中失败: {}", e);
+                        let _ = crate::commands::system::center_window_on_screen(&window);
+                    }
                     app_info!("主窗口固定显示在当前屏幕顶部 5% 处居中");
                 } else {
                     app_info!("主窗口已固定或加载中，保持当前位置");
