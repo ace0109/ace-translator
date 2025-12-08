@@ -56,7 +56,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="h-screen w-screen bg-background text-foreground antialiased overflow-auto">
+  <div class="h-screen w-screen text-foreground antialiased overflow-y-auto">
     <router-view></router-view>
     <Toaster />
   </div>

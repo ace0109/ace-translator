@@ -3,5 +3,8 @@
   "editor.defaultFormatter": "oxc.oxc-vscode",
   "i18n-ally.localesPaths": [
     "src/locales"
-  ]
+  ],
+  "[vue]": {
+    "editor.defaultFormatter": "Vue.volar"
+  }
 }
