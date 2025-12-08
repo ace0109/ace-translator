@@ -70,8 +70,8 @@
   * {
     @apply border-border;
   }
-  body {
-    @apply bg-background text-foreground;
+  html, body {
+    @apply bg-transparent text-foreground;
   }
 }
 

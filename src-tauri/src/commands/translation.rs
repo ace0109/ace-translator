@@ -5,6 +5,7 @@ use crate::services::ai::{
     claude::ClaudeProvider,
     ollama::OllamaProvider,
 };
+use crate::config::providers;
 use crate::services::encryption::decrypt_api_key;
 use crate::AppState;
 use futures::future::{join_all, Abortable, AbortHandle, Aborted};
@@ -45,7 +46,7 @@ async fn get_enabled_providers(db: &sqlx::SqlitePool) -> Result<Vec<ProviderConf
     #[derive(sqlx::FromRow)]
     struct DbProviderConfig {
         provider_name: String,
-        _enabled: i32,
+        enabled: i32,
         api_key: String,
         model: String,
         base_url: Option<String>,
@@ -66,11 +67,24 @@ async fn get_enabled_providers(db: &sqlx::SqlitePool) -> Result<Vec<ProviderConf
             String::new()
         };
 
+        // Fallback to a sane default model if DB value is empty
+        let model = if row.model.is_empty() {
+            match row.provider_name.as_str() {
+                "zhipu" => providers::ZHIPU_MODELS.first().map(|m| m.id).unwrap_or("glm-4-flashx").to_string(),
+                "openai" => providers::OPENAI_MODELS.first().map(|m| m.id).unwrap_or("gpt-4o-mini").to_string(),
+                "claude" => providers::CLAUDE_MODELS.first().map(|m| m.id).unwrap_or("claude-3-5-haiku-latest").to_string(),
+                "ollama" => "llama3.2".to_string(),
+                _ => String::new(),
+            }
+        } else {
+            row.model.clone()
+        };
+
         configs.push(ProviderConfig {
             provider_name: row.provider_name,
-            enabled: true,
+            enabled: row.enabled != 0,
             api_key,
-            model: row.model,
+            model,
             base_url: row.base_url,
         });
     }
@@ -458,13 +472,6 @@ async fn translate_stream_with_provider(
 
     // Start translation task
     let translate_task = tokio::spawn(async move {
-        // Emit StreamEvent::Start
-        let _ = tx.send(StreamEvent::Start {
-            provider: config_clone.provider_name.clone(),
-            model: config_clone.model.clone(),
-            request_id: req_id, // Pass req_id here
-        }).await;
-
         match config_clone.provider_name.as_str() {
             "zhipu" => {
                 let provider = ZhipuProvider::new(&config_clone);
@@ -496,8 +503,30 @@ async fn translate_stream_with_provider(
     // Forward events to the frontend
     let mut final_result: Option<ProviderTranslationResult> = None;
 
-    while let Some(event) = rx.recv().await {
-        // Emit event to frontend
+    while let Some(mut event) = rx.recv().await {
+        // Normalize provider/model to backend ID to keep frontend keys consistent
+        match &mut event {
+            StreamEvent::Start { provider, model: evt_model, .. } => {
+                *provider = provider_name.clone();
+                if evt_model.is_empty() {
+                    *evt_model = model.clone();
+                }
+            }
+            StreamEvent::Chunk { provider, .. } => {
+                *provider = provider_name.clone();
+            }
+            StreamEvent::Done { provider, model: evt_model, .. } => {
+                *provider = provider_name.clone();
+                if evt_model.is_empty() {
+                    *evt_model = model.clone();
+                }
+            }
+            StreamEvent::Error { provider, .. } => {
+                *provider = provider_name.clone();
+            }
+        }
+
+        // Emit normalized event to frontend
         let _ = app.emit("translation-stream", &event);
 
         // Process completion and error events

@@ -63,11 +63,18 @@ export function useStreamingTranslation(
     })
   }
 
+  const setResult = (key: string, updater: (current?: StreamingResult) => StreamingResult) => {
+    const next = new Map(streamingResults.value)
+    const current = next.get(key)
+    next.set(key, updater(current))
+    streamingResults.value = next
+  }
+
   const initProviders = (providers: Array<{ provider: string; model: string }>) => {
-    streamingResults.value.clear()
+    const next = new Map<string, StreamingResult>()
     providers.forEach(p => {
       const key = `${p.provider}-${p.model}`
-      streamingResults.value.set(key, {
+      next.set(key, {
         provider: p.provider,
         model: p.model,
         content: '',
@@ -75,35 +82,36 @@ export function useStreamingTranslation(
         loading: true,
       })
     })
+    streamingResults.value = next
     isLoading.value = true
     error.value = null
   }
 
   const handleStart = (data: StreamEventData) => {
     const key = `${data.provider}-${data.model}`
-    const existing = streamingResults.value.get(key)
-    if (existing) {
-      existing.loading = true // 仍在加载（流式传输中）
-      existing.error = undefined
-    } else {
-      streamingResults.value.set(key, {
-        provider: data.provider,
-        model: data.model,
-        content: '',
-        isComplete: false,
-        loading: true,
-      })
-    }
-    // isLoading.value = true; // Overall isLoading is handled by allComplete check
+    setResult(key, (existing) => ({
+      provider: data.provider,
+      model: data.model,
+      content: existing?.content || '',
+      isComplete: existing?.isComplete || false,
+      loading: true,
+      error: undefined,
+    }))
     error.value = null
   }
 
   const handleChunk = (data: StreamEventData) => {
     const provider = data.provider
-    // 查找匹配的 result
     for (const [key, result] of streamingResults.value.entries()) {
       if (result.provider === provider && !result.isComplete) {
-        result.content += data.content || ''
+        setResult(key, (current) => ({
+          provider: result.provider,
+          model: result.model,
+          content: (current?.content || '') + (data.content || ''),
+          isComplete: current?.isComplete || false,
+          loading: current?.loading ?? true,
+          error: current?.error,
+        }))
         break
       }
     }
@@ -111,12 +119,14 @@ export function useStreamingTranslation(
 
   const handleDone = (data: StreamEventData) => {
     const key = `${data.provider}-${data.model}`
-    const result = streamingResults.value.get(key)
-    if (result) {
-      result.content = data.full_translation || ''
-      result.isComplete = true
-      result.loading = false
-    }
+    setResult(key, (result) => ({
+      provider: data.provider,
+      model: data.model,
+      content: data.full_translation || result?.content || '',
+      isComplete: true,
+      loading: false,
+      error: result?.error,
+    }))
 
     // Update detected/target languages so the UI can display them
     if (onLanguageUpdate && (data.detected_source_lang || data.target_lang)) {
@@ -133,21 +143,25 @@ export function useStreamingTranslation(
   const handleError = (data: StreamEventData) => {
     // 标记对应的 result 为错误状态
     let found = false
-    for (const result of streamingResults.value.values()) {
+    for (const [key, result] of streamingResults.value.entries()) {
       if (result.provider === data.provider) {
-        result.isComplete = true
-        result.loading = false
-        result.error = data.error
+        setResult(key, (current) => ({
+          provider: result.provider,
+          model: result.model,
+          content: current?.content || '',
+          isComplete: true,
+          loading: false,
+          error: data.error,
+        }))
         found = true
         break
       }
     }
-    
-    // 如果是全局错误（没找到特定 provider），或者都出错了
+
     if (!found) {
-       error.value = `${data.provider}: ${data.error}`
+      error.value = `${data.provider}: ${data.error}`
     }
-    
+
     const allComplete = Array.from(streamingResults.value.values()).every(r => r.isComplete)
     if (allComplete) {
       isLoading.value = false
@@ -155,7 +169,7 @@ export function useStreamingTranslation(
   }
 
   const reset = () => {
-    streamingResults.value.clear()
+    streamingResults.value = new Map()
     isLoading.value = false
     error.value = null
   }

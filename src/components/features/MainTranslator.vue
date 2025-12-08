@@ -1,5 +1,5 @@
 <template>
-  <div ref="mainContainer" class="relative flex h-full w-full flex-col bg-background text-foreground rounded-xl border shadow-lg overflow-hidden">
+  <div ref="mainContainer" class="relative flex w-full flex-col bg-background text-foreground rounded-xl border shadow-lg overflow-hidden">
     <!-- Custom Title Bar -->
     <header
       data-tauri-drag-region
@@ -36,7 +36,7 @@
     </header>
 
     <!-- Content Area -->
-    <div class="flex-1 flex flex-col min-h-0 overflow-hidden">
+    <div class="flex flex-col">
       <!-- Language Info Header -->
       <div class="flex items-center justify-between border-b bg-card px-3 py-2 text-sm shadow-sm shrink-0">
         <div class="flex items-center gap-2">
@@ -67,21 +67,27 @@
         <div class="relative">
           <textarea
             v-model="sourcePreview"
-            class="w-full max-h-[150px] min-h-[60px] overflow-auto rounded-md border bg-background/80 p-2 text-sm leading-relaxed shadow-inner focus:outline-none focus:ring-1 focus:ring-primary resize-y"
+            ref="sourceTextarea"
+            class="w-full min-h-[60px] max-h-[20rem] overflow-auto rounded-md border bg-background/80 p-2 text-sm leading-relaxed shadow-inner focus:outline-none focus:ring-1 focus:ring-primary resize-none"
             :placeholder="t('translator.inputPlaceholder')"
-            @keydown.enter.ctrl.exact="startTranslation(sourcePreview)"
-            @keydown.enter.meta.exact="startTranslation(sourcePreview)"
+            @input="autoResizeTextarea"
+            @keydown.enter.exact.prevent="startTranslation(sourcePreview)"
+            @keydown.enter.ctrl.exact.prevent="startTranslation(sourcePreview)"
+            @keydown.enter.meta.exact.prevent="startTranslation(sourcePreview)"
           ></textarea>
         </div>
       </section>
 
       <!-- Translation Results -->
-      <section class="flex-1 min-h-0 overflow-auto px-3 py-2 space-y-2">
-        <!-- Multi-Provider Results -->
-        <template v-if="allTranslationResults.length > 0">
+      <section class="px-3 py-2 space-y-2">
+        <div v-if="enabledProviders.length === 0 && !streamingLoading" class="py-6 text-center text-sm text-muted-foreground">
+          {{ t('translator.waitingTranslation') }}
+        </div>
+
+        <div v-else class="space-y-2">
           <div
-            v-for="(result, index) in allTranslationResults"
-            :key="result.provider + index"
+            v-for="provider in enabledProviders"
+            :key="provider.name"
             class="rounded-lg border bg-card shadow-sm overflow-hidden"
           >
             <!-- Provider Header -->
@@ -90,18 +96,19 @@
                 <span
                   class="h-2 w-2 rounded-full"
                   :class="{
-                    'bg-green-500': result.success && !result.loading,
-                    'bg-red-500': !result.success && !result.loading,
-                    'bg-gray-400 animate-pulse': result.loading
+                    'bg-green-500': getProviderCardState(provider).success && !getProviderCardState(provider).loading,
+                    'bg-red-500': getProviderCardState(provider).error && !getProviderCardState(provider).loading,
+                    'bg-gray-400 animate-pulse': getProviderCardState(provider).loading,
+                    'bg-muted-foreground': !getProviderCardState(provider).loading && !getProviderCardState(provider).success && !getProviderCardState(provider).error,
                   }"
                 />
-                <span class="text-xs font-medium">{{ result.provider }}</span>
-                <span class="text-[10px] text-muted-foreground">{{ result.model }}</span>
+                <span class="text-xs font-medium">{{ provider.display_name }}</span>
+                <span class="text-[10px] text-muted-foreground">{{ getProviderCardState(provider).model || provider.config.model }}</span>
               </div>
               <button
-                v-if="result.success && !result.loading"
+                v-if="getProviderCardState(provider).success && !getProviderCardState(provider).loading"
                 class="inline-flex items-center gap-1 rounded border bg-muted/60 px-2 py-0.5 text-[10px] text-muted-foreground transition hover:bg-accent hover:text-accent-foreground"
-                @click="copyText(result.translation)"
+                @click="copyText(getProviderCardState(provider).translation)"
                 :title="t('common.copy')"
               >
                 <Copy class="h-3 w-3" /> {{ t('common.copy') }}
@@ -110,26 +117,28 @@
 
             <!-- Result Content -->
             <div class="px-3 py-2">
-              <div v-if="result.loading" class="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed bg-muted/30 px-3 py-6">
-                 <LoadingSpinner />
-                 <p class="text-xs text-muted-foreground">{{ t('translator.translating') }}</p>
-              </div>
-              <div v-else-if="result.success" class="max-h-[200px] overflow-auto rounded-md border border-dashed bg-background/70 p-2 relative">
-                <p class="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap break-words">
-                  {{ result.translation }}
-                </p>
-              </div>
-              <div v-else class="rounded-md border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30 p-2">
+              <div v-if="getProviderCardState(provider).error" class="rounded-md border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30 p-2">
                 <p class="text-xs text-red-600 dark:text-red-400">
-                  {{ result.error || t('translator.translationFailed') }}
+                  {{ getProviderCardState(provider).error || t('translator.translationFailed') }}
                 </p>
+              </div>
+              <div v-else class="relative rounded-md border border-dashed bg-background/70 p-2">
+                <p class="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap break-words min-h-[32px]">
+                  {{
+                    getProviderCardState(provider).translation
+                      || (getProviderCardState(provider).loading ? t('translator.translating') : t('translator.waitingTranslation'))
+                  }}
+                </p>
+                <div
+                  v-if="getProviderCardState(provider).loading"
+                  class="absolute right-2 top-2 flex items-center justify-center"
+                >
+                  <LoadingSpinner />
+                </div>
               </div>
             </div>
           </div>
-        </template>
-
-        <!-- Empty State -->
-        <p v-else-if="!streamingLoading" class="py-6 text-center text-sm text-muted-foreground">{{ t('translator.waitingTranslation') }}</p>
+        </div>
       </section>
     </div>
 
@@ -173,6 +182,7 @@ import { languageOptions } from '@/constants/languages'
 import { showToast } from '@/lib/toast'
 import { useStreamingTranslation } from '@/composables/useStreamingTranslation'
 import { Pin, PinOff, Settings, X, Copy, ArrowRight } from 'lucide-vue-next'
+import { isTauriEnv } from '@/utils/env'
 
 const { t } = useI18n()
 
@@ -208,11 +218,13 @@ interface MultiProviderResult {
 const mainContainer = ref<HTMLElement | null>(null)
 const translationResults = ref<ProviderTranslationResult[]>([])
 const sourcePreview = ref('')
+const sourceTextarea = ref<HTMLTextAreaElement | null>(null)
 // const isLoading = ref(false) // No longer needed, replaced by streamingLoading
 const detectedLang = ref('')
 const targetLang = ref('')
 const pinned = ref(false)
 const currentRequestId = ref(0)
+const enabledProviders = ref<ProviderInfo[]>([])
 
 const settingsStore = useSettingsStore()
 const { streamingResults, isLoading: streamingLoading, error: streamingError, reset, initProviders } = useStreamingTranslation(
@@ -232,47 +244,103 @@ const langLabel = (lang: string) => {
 const detectedLabel = computed(() => langLabel(detectedLang.value))
 const targetLabel = computed(() => langLabel(targetLang.value))
 
-// 合并流式和非流式翻译结果
-const allTranslationResults = computed(() => {
-  const results: (ProviderTranslationResult & { loading?: boolean })[] = []
+const providerKey = (provider: ProviderInfo) => {
+  const model = provider.config.model || provider.available_models[0] || 'default'
+  return `${provider.name}-${model}`
+}
 
-  // 将流式结果转换为统一的格式
-  for (const [key, streamResult] of streamingResults.value) {
-    results.push({
-      provider: streamResult.provider,
-      model: streamResult.model,
-      detected_source_lang: detectedLang.value, // From global or first successful result
-      target_lang: targetLang.value, // From global or first successful result
-      translation: streamResult.content,
-      success: !streamResult.error,
-      error: streamResult.error || null,
-      loading: streamResult.loading, // Add loading state
-    })
-  }
+type ProviderCardState = {
+  loading: boolean
+  translation: string
+  success: boolean
+  error: string | null
+  model: string
+}
 
-  // If there are non-streaming results (e.g., when useStreaming.value is false), merge them too
-  // For now, we primarily focus on streaming, so this logic can be simplified.
-  // The `translationResults` array is for non-streaming results.
-  if (!useStreaming.value) {
-    translationResults.value.forEach(res => {
-      results.push({
-        provider: res.provider,
-        model: res.model,
-        detected_source_lang: res.detected_source_lang,
-        target_lang: res.target_lang,
-        translation: res.translation,
-        success: res.success,
-        error: res.error,
-        loading: false, // Non-streaming results are not 'loading' in this context
+const providerCardStates = computed(() => {
+  const map = new Map<string, ProviderCardState>()
+
+  enabledProviders.value.forEach((provider) => {
+    const key = providerKey(provider)
+    const model = provider.config.model || provider.available_models[0] || ''
+    const baseState: ProviderCardState = {
+      loading: false,
+      translation: '',
+      success: false,
+      error: null,
+      model,
+    }
+
+    const stream = streamingResults.value.get(key)
+    if (stream) {
+      map.set(key, {
+        loading: stream.loading,
+        translation: stream.content,
+        success: stream.isComplete && !stream.error,
+        error: stream.error,
+        model: stream.model || model,
       })
-    })
-  }
+      return
+    }
 
-  return results
+    const nonStream = translationResults.value.find(
+      (r) => r.provider === provider.name || r.provider === provider.display_name,
+    )
+    if (nonStream) {
+      map.set(key, {
+        loading: false,
+        translation: nonStream.translation,
+        success: nonStream.success,
+        error: nonStream.error || null,
+        model: nonStream.model || model,
+      })
+      return
+    }
+
+    map.set(key, baseState)
+  })
+
+  return map
 })
+
+const getProviderCardState = (provider: ProviderInfo) => {
+  return providerCardStates.value.get(providerKey(provider)) || {
+    loading: false,
+    translation: '',
+    success: false,
+    error: null,
+    model: provider.config.model || provider.available_models[0] || '',
+  }
+}
 
 const showApiKeyPrompt = ref(false)
 const useStreaming = ref(true) // Add streaming translation switch
+
+const applyDefaultModel = (provider: ProviderInfo): ProviderInfo => {
+  const fallbackModel = provider.config.model || provider.available_models[0] || ''
+  return {
+    ...provider,
+    config: {
+      ...provider.config,
+      model: fallbackModel,
+    },
+  }
+}
+
+const loadEnabledProviders = async () => {
+  if (!isTauriEnv()) return
+  try {
+    const allProviders = await invoke<ProviderInfo[]>('get_provider_configs')
+    enabledProviders.value = allProviders
+      .filter((p) => p.config.enabled)
+      .map(applyDefaultModel)
+    await nextTick()
+    updateWindowHeight()
+  } catch (error: any) {
+    const errMsg = error?.message || String(error)
+    showToast(`获取服务商配置失败：${errMsg}`, 'error')
+  }
+}
 
 const openSettings = async () => {
   try {
@@ -320,7 +388,9 @@ const copyText = async (text: string) => {
   }
 }
 
-let unlisten: (() => void) | undefined;
+let unlisten: (() => void) | undefined
+let providerConfigUnlisten: (() => void) | undefined
+let focusUnlisten: (() => void) | undefined
 
 const startTranslation = async (text: string) => {
   if (!text.trim()) return
@@ -353,12 +423,15 @@ const startTranslation = async (text: string) => {
   } catch (_) {}
 
   // Get enabled providers and initialize streamingResults
-  let enabledProviders: ProviderInfo[] = []
+  let activeProviders: ProviderInfo[] = []
   try {
     const allProviders = await invoke<ProviderInfo[]>('get_provider_configs')
-    enabledProviders = allProviders.filter(p => p.config.enabled) // Removed temporary exclusion for zhipu
+    activeProviders = allProviders
+      .filter(p => p.config.enabled)
+      .map(applyDefaultModel)
+    enabledProviders.value = activeProviders
 
-    if (enabledProviders.length === 0) {
+    if (activeProviders.length === 0) {
       showApiKeyPrompt.value = true
       reset()
       try {
@@ -368,7 +441,7 @@ const startTranslation = async (text: string) => {
     }
 
     // Initialize streamingResults with loading states for each enabled provider
-    initProviders(enabledProviders.map(p => ({ provider: p.name, model: p.config.model })))
+    initProviders(activeProviders.map(p => ({ provider: p.name, model: p.config.model })))
   } catch (error: any) {
     const errMsg = error?.message || String(error)
     showToast(`获取服务商配置失败：${errMsg}`, 'error')
@@ -381,7 +454,7 @@ const startTranslation = async (text: string) => {
       // Call the new translate_multi_stream_individual command
       // This command will trigger parallel streaming translations for multiple providers,
       // and update the frontend via the event system.
-      const providerNames = enabledProviders.map(p => p.name)
+      const providerNames = activeProviders.map(p => p.name)
       await invoke('translate_multi_stream_individual', {
         text: text,
         primaryTarget: settingsStore.primaryTarget,
@@ -452,13 +525,21 @@ onMounted(async () => {
     settingsStore.setSecondaryTarget(loadedSettings.secondary_target || 'en')
   } catch (_) {}
 
+  await loadEnabledProviders()
+
   // Listen for provider config changes
-  await listen('provider-config-changed', () => {
+  providerConfigUnlisten = await listen('provider-config-changed', async () => {
     // If we were showing the "no provider" prompt, we can dismiss it now
     // assuming the user just enabled a provider.
     if (showApiKeyPrompt.value) {
       showApiKeyPrompt.value = false
     }
+    await loadEnabledProviders()
+  })
+
+  // When the window regains focus, refresh providers to reflect settings changes made elsewhere
+  focusUnlisten = await listen('tauri://focus', async () => {
+    await loadEnabledProviders()
   })
 
   // Listen for main-show event (triggered by double-click copy)
@@ -474,9 +555,16 @@ onUnmounted(() => {
   if (unlisten) {
     unlisten()
   }
+  if (providerConfigUnlisten) {
+    providerConfigUnlisten()
+  }
+  if (focusUnlisten) {
+    focusUnlisten()
+  }
 })
 
 // Window height auto-resize
+let resizeTimer: number | null = null
 const updateWindowHeight = async () => {
   await nextTick()
   if (!mainContainer.value) return
@@ -495,8 +583,14 @@ const updateWindowHeight = async () => {
 }
 
 // Watch for content changes to update window height
-watch([translationResults, streamingResults, sourcePreview, streamingLoading], async () => {
-  await updateWindowHeight()
+watch([translationResults, streamingResults, sourcePreview, streamingLoading, enabledProviders], () => {
+  if (resizeTimer) {
+    window.clearTimeout(resizeTimer)
+  }
+  resizeTimer = window.setTimeout(() => {
+    updateWindowHeight()
+    resizeTimer = null
+  }, 20)
 }, { deep: true })
 
 // Sync tauri loading flag with streaming state
@@ -539,6 +633,21 @@ const cancelCurrent = async () => {
     await invoke('hide_window')
   } catch (_) {}
 }
+
+// Auto-resize source textarea within bounds
+const autoResizeTextarea = () => {
+  const el = sourceTextarea.value
+  if (!el) return
+  el.style.height = 'auto'
+  const lineHeight = parseInt(getComputedStyle(el).lineHeight || '18', 10)
+  const maxHeight = lineHeight * 20 // 20 rows
+  const nextHeight = Math.min(el.scrollHeight, maxHeight)
+  el.style.height = `${nextHeight}px`
+}
+
+watch(sourcePreview, () => {
+  nextTick(() => autoResizeTextarea())
+})
 
 </script>
 

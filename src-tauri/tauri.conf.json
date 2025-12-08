@@ -25,6 +25,8 @@
         "fullscreen": false,
         "visible": false,
         "decorations": false,
+        "transparent": true,
+        "backgroundColor": "#00000000",
         "url": "index.html#/main"
       },
       {

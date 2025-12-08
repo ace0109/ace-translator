@@ -115,13 +115,36 @@ pub async fn get_provider_configs(state: State<'_, AppState>) -> Result<Vec<Prov
             String::new()
         };
 
-        let (display_name, available_models, supports_base_url) = match row.provider_name.as_str() {
-            "zhipu" => ("智谱AI", providers::ZHIPU_MODELS.iter().map(|m| m.id.to_string()).collect(), false),
-            "openai" => ("OpenAI", providers::OPENAI_MODELS.iter().map(|m| m.id.to_string()).collect(), true),
-            "claude" => ("Claude", providers::CLAUDE_MODELS.iter().map(|m| m.id.to_string()).collect(), false),
-            "ollama" => ("Ollama", OLLAMA_MODELS.iter().map(|s| s.to_string()).collect(), true),
+        let (display_name, available_models, supports_base_url, default_model) = match row.provider_name.as_str() {
+            "zhipu" => (
+                "智谱AI",
+                providers::ZHIPU_MODELS.iter().map(|m| m.id.to_string()).collect(),
+                false,
+                providers::ZHIPU_MODELS.first().map(|m| m.id).unwrap_or("glm-4-flashx").to_string(),
+            ),
+            "openai" => (
+                "OpenAI",
+                providers::OPENAI_MODELS.iter().map(|m| m.id.to_string()).collect(),
+                true,
+                providers::OPENAI_MODELS.first().map(|m| m.id).unwrap_or("gpt-4o-mini").to_string(),
+            ),
+            "claude" => (
+                "Claude",
+                providers::CLAUDE_MODELS.iter().map(|m| m.id.to_string()).collect(),
+                false,
+                providers::CLAUDE_MODELS.first().map(|m| m.id).unwrap_or("claude-3-5-haiku-latest").to_string(),
+            ),
+            "ollama" => (
+                "Ollama",
+                OLLAMA_MODELS.iter().map(|s| s.to_string()).collect(),
+                true,
+                "llama3.2".to_string(),
+            ),
             _ => continue,
         };
+
+        // fallback to default model if DB value is empty (helps fresh installs)
+        let model = if row.model.is_empty() { default_model.clone() } else { row.model.clone() };
 
         providers.push(ProviderInfo {
             name: row.provider_name.clone(),
@@ -130,7 +153,7 @@ pub async fn get_provider_configs(state: State<'_, AppState>) -> Result<Vec<Prov
                 provider_name: row.provider_name,
                 enabled: row.enabled != 0,
                 api_key,
-                model: row.model,
+                model,
                 base_url: row.base_url,
             },
             available_models,

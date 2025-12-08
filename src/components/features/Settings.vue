@@ -1,5 +1,5 @@
 <template>
-  <div class="p-6">
+  <div class="p-6 bg-background">
     <div class="mx-auto flex max-w-3xl flex-col gap-6">
       <!-- 服务商配置 -->
       <Card>
@@ -10,26 +10,15 @@
         <CardContent class="space-y-4">
           <!-- 服务商 Tab 栏 -->
           <div class="flex border-b">
-            <button
-              v-for="provider in providers"
-              :key="provider.name"
-              class="relative px-4 py-2 text-sm font-medium transition-colors"
-              :class="[
+            <button v-for="provider in providers" :key="provider.name"
+              class="relative px-4 py-2 text-sm font-medium transition-colors" :class="[
                 activeProvider === provider.name
                   ? 'text-primary'
                   : 'text-muted-foreground hover:text-foreground'
-              ]"
-              @click="activeProvider = provider.name"
-            >
+              ]" @click="activeProvider = provider.name">
               {{ provider.display_name }}
-              <span
-                v-if="provider.config.enabled"
-                class="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-green-500"
-              />
-              <span
-                v-if="activeProvider === provider.name"
-                class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"
-              />
+              <span v-if="provider.config.enabled" class="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-green-500" />
+              <span v-if="activeProvider === provider.name" class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
             </button>
           </div>
 
@@ -40,32 +29,26 @@
               <div>
                 <Label>{{ t('settings.providerConfig.enable') }} {{ currentProvider.display_name }}</Label>
                 <p class="text-xs text-muted-foreground">
-                  {{ 
-                    currentProvider.name === 'zhipu' 
-                      ? t('settings.providerConfig.zhipuForceEnabled') 
-                      : t('settings.providerConfig.enableDesc') 
+                  {{
+                    currentProvider.name === 'zhipu'
+                      ? t('settings.providerConfig.zhipuForceEnabled')
+                      : t('settings.providerConfig.enableDesc')
                   }}
                 </p>
               </div>
-              <Switch
-                :checked="currentProvider.name === 'zhipu' ? true : currentProvider.config.enabled"
-                :disabled="currentProvider.name === 'zhipu'"
-                @update:checked="(v) => updateProviderEnabled(v)"
-              />
+              <Switch :checked="currentProvider.name === 'zhipu' ? true : currentProvider.config.enabled"
+                :disabled="currentProvider.name === 'zhipu'" @update:checked="(v) => updateProviderEnabled(v)" />
             </div>
 
             <!-- API Key -->
             <div v-if="currentProvider.name !== 'ollama'" class="space-y-2">
               <Label :for="`${currentProvider.name}-apikey`">{{ t('settings.providerConfig.apiKey') }}</Label>
               <div class="flex gap-2">
-                <Input
-                  :id="`${currentProvider.name}-apikey`"
-                  v-model="currentProvider.config.api_key"
-                  type="password"
-                  :placeholder="t('settings.providerConfig.apiKeyPlaceholder', { provider: currentProvider.display_name })"
-                />
+                <Input :id="`${currentProvider.name}-apikey`" v-model="currentProvider.config.api_key" type="password"
+                  :placeholder="t('settings.providerConfig.apiKeyPlaceholder', { provider: currentProvider.display_name })" />
               </div>
-              <p v-if="currentProvider.name === 'zhipu' && currentProvider.config.model.includes('flash')" class="text-xs text-muted-foreground">
+              <p v-if="currentProvider.name === 'zhipu' && currentProvider.config.model.includes('flash')"
+                class="text-xs text-muted-foreground">
                 {{ t('settings.providerConfig.zhipuFlashHint') }}
               </p>
             </div>
@@ -73,13 +56,11 @@
             <!-- 模型选择 -->
             <div class="space-y-2">
               <Label :for="`${currentProvider.name}-model`">{{ t('settings.providerConfig.model') }}</Label>
-              <Select
-                :id="`${currentProvider.name}-model`"
+              <Select :id="`${currentProvider.name}-model`"
                 :model-value="currentProvider.config.model || currentProvider.available_models[0]"
                 :options="currentProvider.available_models.map(m => ({ label: m, value: m }))"
                 :placeholder="t('settings.providerConfig.selectModel')"
-                @update:model-value="(v) => updateProviderModel(v)"
-              />
+                @update:model-value="(v) => updateProviderModel(v)" />
               <p v-if="currentProvider.name === 'ollama'" class="text-xs text-muted-foreground">
                 {{ t('settings.providerConfig.ollamaModelHint') }}
               </p>
@@ -88,31 +69,22 @@
             <!-- 自定义 API 地址（仅 OpenAI 和 Ollama） -->
             <div v-if="currentProvider.supports_base_url" class="space-y-2">
               <Label :for="`${currentProvider.name}-baseurl`">{{ t('settings.providerConfig.baseUrl') }}</Label>
-              <Input
-                :id="`${currentProvider.name}-baseurl`"
-                :model-value="currentProvider.config.base_url || ''"
+              <Input :id="`${currentProvider.name}-baseurl`" :model-value="currentProvider.config.base_url || ''"
                 :placeholder="currentProvider.name === 'ollama' ? 'http://localhost:11434/api/chat' : 'https://api.openai.com/v1/chat/completions'"
-                @update:model-value="updateProviderBaseUrl"
-              />
+                @update:model-value="updateProviderBaseUrl" />
               <p class="text-xs text-muted-foreground">
-                {{ currentProvider.name === 'ollama' ? t('settings.providerConfig.baseUrlHintOllama') : t('settings.providerConfig.baseUrlHintOpenAI') }}
+                {{ currentProvider.name === 'ollama' ? t('settings.providerConfig.baseUrlHintOllama') :
+                  t('settings.providerConfig.baseUrlHintOpenAI') }}
               </p>
             </div>
 
             <!-- 保存和测试按钮 -->
             <div class="flex gap-2 pt-2">
-              <Button
-                :disabled="isSavingProvider"
-                @click="saveCurrentProvider"
-              >
+              <Button :disabled="isSavingProvider" @click="saveCurrentProvider">
                 <Loader2 v-if="isSavingProvider" class="mr-2 h-4 w-4 animate-spin" />
                 {{ t('settings.providerConfig.saveConfig') }}
               </Button>
-              <Button
-                variant="outline"
-                :disabled="isTestingProvider"
-                @click="testCurrentProvider"
-              >
+              <Button variant="outline" :disabled="isTestingProvider" @click="testCurrentProvider">
                 <Loader2 v-if="isTestingProvider" class="mr-2 h-4 w-4 animate-spin" />
                 {{ t('settings.providerConfig.testConnection') }}
               </Button>
@@ -121,11 +93,9 @@
             <!-- 测试结果 -->
             <div v-if="testResult" class="space-y-2 rounded-md border p-3">
               <div class="flex items-center gap-2">
-                <span
-                  :class="testResult.success ? 'text-green-500' : 'text-red-500'"
-                  class="text-sm font-medium"
-                >
-                  {{ testResult.success ? t('settings.providerConfig.connectionSuccess') : t('settings.providerConfig.connectionFailed') }}
+                <span :class="testResult.success ? 'text-green-500' : 'text-red-500'" class="text-sm font-medium">
+                  {{ testResult.success ? t('settings.providerConfig.connectionSuccess') :
+                    t('settings.providerConfig.connectionFailed') }}
                 </span>
                 <span class="text-xs text-muted-foreground">
                   HTTP {{ testResult.status_code }} | {{ testResult.response_time_ms }}ms
@@ -138,13 +108,15 @@
                 <summary class="cursor-pointer text-muted-foreground hover:text-foreground">
                   {{ t('settings.providerConfig.viewRequestPayload') }}
                 </summary>
-                <pre class="mt-2 max-h-48 overflow-auto rounded bg-muted/40 p-2">{{ JSON.stringify(testResult.request_payload, null, 2) }}</pre>
+                <pre
+                  class="mt-2 max-h-48 overflow-auto rounded bg-muted/40 p-2">{{ JSON.stringify(testResult.request_payload, null, 2) }}</pre>
               </details>
               <details v-if="testResult.raw_response" class="text-xs">
                 <summary class="cursor-pointer text-muted-foreground hover:text-foreground">
                   {{ t('settings.providerConfig.viewRawResponse') }}
                 </summary>
-                <pre class="mt-2 max-h-48 overflow-auto rounded bg-muted/40 p-2">{{ JSON.stringify(testResult.raw_response, null, 2) }}</pre>
+                <pre
+                  class="mt-2 max-h-48 overflow-auto rounded bg-muted/40 p-2">{{ JSON.stringify(testResult.raw_response, null, 2) }}</pre>
               </details>
             </div>
           </div>
@@ -166,29 +138,19 @@
           <!-- 界面语言 -->
           <div class="space-y-2">
             <Label>{{ t('settings.interfaceLanguage.label') }}</Label>
-            <Select
-              :model-value="locale"
-              :options="localeOptions"
-              @update:model-value="changeLocale"
-            />
+            <Select :model-value="locale" :options="localeOptions" @update:model-value="changeLocale" />
             <p class="text-xs text-muted-foreground">{{ t('settings.interfaceLanguage.description') }}</p>
           </div>
 
           <div class="space-y-2">
             <Label>{{ t('settings.basic.theme') }}</Label>
             <div class="flex flex-wrap gap-2">
-              <Button
-                :variant="settingsForm.theme === 'light' ? 'default' : 'outline'"
-                size="sm"
-                @click="updateTheme('light')"
-              >
+              <Button :variant="settingsForm.theme === 'light' ? 'default' : 'outline'" size="sm"
+                @click="updateTheme('light')">
                 {{ t('settings.basic.themeLight') }}
               </Button>
-              <Button
-                :variant="settingsForm.theme === 'dark' ? 'default' : 'outline'"
-                size="sm"
-                @click="updateTheme('dark')"
-              >
+              <Button :variant="settingsForm.theme === 'dark' ? 'default' : 'outline'" size="sm"
+                @click="updateTheme('dark')">
                 {{ t('settings.basic.themeDark') }}
               </Button>
             </div>
@@ -214,22 +176,14 @@
           <div class="grid gap-4 sm:grid-cols-2">
             <div class="space-y-2">
               <Label for="primaryTarget">{{ t('settings.language.primaryLanguage') }}</Label>
-              <LanguageSelector
-                id="primaryTarget"
-                v-model="settingsForm.primaryTarget"
-                :placeholder="t('settings.language.selectLanguage')"
-                @update:modelValue="savePrimaryTarget"
-              />
+              <LanguageSelector id="primaryTarget" v-model="settingsForm.primaryTarget"
+                :placeholder="t('settings.language.selectLanguage')" @update:modelValue="savePrimaryTarget" />
               <p class="text-xs text-muted-foreground">{{ t('settings.language.primaryLanguageHint') }}</p>
             </div>
             <div class="space-y-2">
               <Label for="secondaryTarget">{{ t('settings.language.secondaryLanguage') }}</Label>
-              <LanguageSelector
-                id="secondaryTarget"
-                v-model="settingsForm.secondaryTarget"
-                :placeholder="t('settings.language.selectLanguage')"
-                @update:modelValue="saveSecondaryTarget"
-              />
+              <LanguageSelector id="secondaryTarget" v-model="settingsForm.secondaryTarget"
+                :placeholder="t('settings.language.selectLanguage')" @update:modelValue="saveSecondaryTarget" />
               <p class="text-xs text-muted-foreground">{{ t('settings.language.secondaryLanguageHint') }}</p>
             </div>
           </div>
@@ -250,10 +204,8 @@
                 {{ isMac ? t('settings.hotkey.doubleCopyDescMac') : t('settings.hotkey.doubleCopyDescWin') }}
               </p>
             </div>
-            <Switch
-              :checked="hotkeyConfig.double_copy_enabled"
-              @update:checked="(v) => updateHotkeyConfig('double_copy_enabled', v)"
-            />
+            <Switch :checked="hotkeyConfig.double_copy_enabled"
+              @update:checked="(v) => updateHotkeyConfig('double_copy_enabled', v)" />
           </div>
           <div class="flex items-center justify-between">
             <div>
@@ -262,10 +214,8 @@
                 {{ isMac ? t('settings.hotkey.altSpaceDescMac') : t('settings.hotkey.altSpaceDescWin') }}
               </p>
             </div>
-            <Switch
-              :checked="hotkeyConfig.alt_space_enabled"
-              @update:checked="(v) => updateHotkeyConfig('alt_space_enabled', v)"
-            />
+            <Switch :checked="hotkeyConfig.alt_space_enabled"
+              @update:checked="(v) => updateHotkeyConfig('alt_space_enabled', v)" />
           </div>
         </CardContent>
       </Card>
