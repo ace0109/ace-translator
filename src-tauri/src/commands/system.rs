@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Manager, WebviewWindow};
+use tauri::{AppHandle, Manager, WebviewWindow, Emitter};
 use crate::AppState;
 use crate::services::logger::{LOGGER, LogEntry};
 use serde::{Deserialize, Serialize};
@@ -68,6 +68,26 @@ pub async fn show_settings_window(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn show_history_window(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("history") {
+        window.show().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// 打开日志窗口
+#[tauri::command]
+pub async fn show_logs_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("logs") {
+        window.show().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// 打开关于窗口
+#[tauri::command]
+pub async fn show_about_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("about") {
         window.show().map_err(|e| e.to_string())?;
         window.set_focus().map_err(|e| e.to_string())?;
     }
@@ -198,6 +218,50 @@ pub fn get_logs() -> Vec<LogEntry> {
 #[tauri::command]
 pub fn clear_logs() {
     LOGGER.clear();
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AppInfo {
+    pub version: String,
+    pub dev_mode: bool,
+}
+
+/// 获取应用信息（版本、开发者模式状态）
+#[tauri::command]
+pub fn get_app_info(state: tauri::State<'_, AppState>) -> AppInfo {
+    let dev_mode = state.dev_mode.lock().map(|g| *g).unwrap_or(false);
+    AppInfo {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        dev_mode,
+    }
+}
+
+/// 启用开发者模式（连续点击版本号 7 次后调用）
+#[tauri::command]
+pub async fn enable_dev_mode(app: AppHandle, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    {
+        if let Ok(mut guard) = state.dev_mode.lock() {
+            if *guard {
+                // already enabled
+                return Ok(());
+            }
+            *guard = true;
+        }
+    }
+
+    // persist
+    sqlx::query("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('dev_mode', 'true', CURRENT_TIMESTAMP)")
+        .execute(&state.db)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 更新托盘菜单
+    crate::utils::tray::refresh_tray_menu(&app);
+
+    // 广播事件给前端
+    let _ = app.emit("dev-mode-changed", true);
+
+    Ok(())
 }
 
 /// 获取翻译历史（分页，按时间倒序）

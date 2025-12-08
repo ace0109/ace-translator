@@ -23,6 +23,16 @@ const routes = [
     name: "History",
     component: () => import("./components/features/HistoryAndLogs.vue"),
   },
+  {
+    path: "/logs",
+    name: "Logs",
+    component: () => import("./components/features/LogsWindow.vue"),
+  },
+  {
+    path: "/about",
+    name: "About",
+    component: () => import("./components/features/AboutWindow.vue"),
+  },
 ];
 
 const router = createRouter({
