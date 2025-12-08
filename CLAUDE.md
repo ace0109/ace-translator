@@ -30,8 +30,8 @@ ace-translator/
 │   │   └── common/               # Common components
 │   ├── locales/                  # i18n language files
 │   │   ├── index.ts              # i18n configuration
-│   │   ├── zh-CN.ts              # Chinese translations
-│   │   └── en.ts                 # English translations
+│   │   ├── zh-CN.json            # Chinese translations
+│   │   └── en.json               # English translations
 │   ├── stores/                   # Pinia stores
 │   └── assets/                   # Static assets
 ├── src-tauri/                    # Rust backend
@@ -164,6 +164,6 @@ cd src-tauri && cargo check
 5. Update database migration in `database.rs`
 
 ### Adding New Translations
-1. Add keys to `src/locales/zh-CN.ts`
-2. Add corresponding keys to `src/locales/en.ts`
+1. Add keys to `src/locales/zh-CN.json`
+2. Add corresponding keys to `src/locales/en.json`
 3. Use `t('key.path')` in Vue components

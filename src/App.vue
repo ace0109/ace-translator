@@ -4,6 +4,7 @@ import { useSettingsStore } from './stores/settings';
 import { isTauriEnv } from './utils/env';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import i18n from './locales';
 import Toaster from './components/common/Toaster.vue';
 
 const settingsStore = useSettingsStore();
@@ -24,6 +25,8 @@ onMounted(async () => {
       settingsStore.setTheme(settings.theme || 'dark');
       settingsStore.setPrimaryTarget(settings.primary_target || 'zh-CN');
       settingsStore.setSecondaryTarget(settings.secondary_target || 'en');
+      settingsStore.setLocale(settings.locale || 'zh-CN');
+      i18n.global.locale.value = settings.locale || 'zh-CN';
 
       // Apply dark mode class to html element
       if ((settings.theme || 'dark') === 'dark') {
@@ -43,6 +46,8 @@ onMounted(async () => {
       settingsStore.setTheme(s.theme || 'dark');
       settingsStore.setPrimaryTarget(s.primary_target || 'zh-CN');
       settingsStore.setSecondaryTarget(s.secondary_target || 'en');
+      settingsStore.setLocale(s.locale || 'zh-CN');
+      i18n.global.locale.value = s.locale || 'zh-CN';
 
       // Sync dark mode class
       if ((s.theme || 'dark') === 'dark') {

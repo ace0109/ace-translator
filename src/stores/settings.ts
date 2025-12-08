@@ -8,6 +8,8 @@ export const useSettingsStore = defineStore('settings', {
     primaryTarget: 'zh-CN',
     /** 第二语言（当源语言是第一语言时使用，如：英文） */
     secondaryTarget: 'en',
+    /** 界面语言 */
+    locale: 'zh-CN',
   }),
   actions: {
     setTheme(theme: string) {
@@ -18,6 +20,9 @@ export const useSettingsStore = defineStore('settings', {
     },
     setSecondaryTarget(lang: string) {
       this.secondaryTarget = lang;
+    },
+    setLocale(locale: string) {
+      this.locale = locale;
     },
   },
 });
