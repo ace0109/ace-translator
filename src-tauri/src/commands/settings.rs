@@ -18,6 +18,8 @@ pub struct AppSettings {
     pub primary_target: String,
     /// 第二语言（当源语言是第一语言时使用，如：英文）
     pub secondary_target: String,
+    /// 界面语言
+    pub locale: String,
 }
 
 /// 服务商信息（包括可选模型）
@@ -50,6 +52,7 @@ pub async fn save_settings(app: AppHandle, state: State<'_, AppState>, settings:
         ("theme", settings.theme.clone()),
         ("primary_target", settings.primary_target.clone()),
         ("secondary_target", settings.secondary_target.clone()),
+        ("locale", settings.locale.clone()),
     ];
 
     for (key, value) in queries {
@@ -73,6 +76,7 @@ pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, Str
     let theme = get_val(&state.db, "theme").await.unwrap_or_else(|| "dark".to_string());
     let primary_target = get_val(&state.db, "primary_target").await.unwrap_or_else(|| "zh-CN".to_string());
     let secondary_target = get_val(&state.db, "secondary_target").await.unwrap_or_else(|| "en".to_string());
+    let locale = get_val(&state.db, "locale").await.unwrap_or_else(|| "zh-CN".to_string());
 
     let api_key = if !encrypted_key.is_empty() {
         decrypt_api_key(&encrypted_key).unwrap_or_default()
@@ -85,6 +89,7 @@ pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, Str
         theme,
         primary_target,
         secondary_target,
+        locale,
     })
 }
 

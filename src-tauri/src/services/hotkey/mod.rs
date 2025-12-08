@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use mouse_position::mouse_position::Mouse;
 use tauri::{Emitter, Manager};
 use tokio::time::sleep;
 

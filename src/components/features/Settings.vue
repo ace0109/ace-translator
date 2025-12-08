@@ -11,12 +11,8 @@
           <!-- 服务商 Tab 栏 -->
           <Tabs v-model="activeProvider" class="w-full">
             <TabsList class="flex w-full flex-wrap gap-2 rounded-md border bg-muted/40 p-1">
-              <TabsTrigger
-                v-for="provider in providers"
-                :key="provider.name"
-                :value="provider.name"
-                class="relative flex-1 min-w-[120px] justify-center"
-              >
+              <TabsTrigger v-for="provider in providers" :key="provider.name" :value="provider.name"
+                class="relative flex-1 min-w-[120px] justify-center">
                 <span class="truncate">{{ provider.display_name }}</span>
                 <span v-if="provider.config.enabled" class="absolute right-2 h-2 w-2 rounded-full bg-green-500" />
               </TabsTrigger>
@@ -238,10 +234,6 @@
           </div>
         </CardContent>
       </Card>
-
-
-
-
     </div>
   </div>
 </template>
@@ -297,6 +289,7 @@ interface SettingsForm {
   theme: 'light' | 'dark'
   primaryTarget: string
   secondaryTarget: string
+  locale: SupportedLocale
 }
 
 interface HotkeyConfig {
@@ -309,6 +302,7 @@ const settingsForm = ref<SettingsForm>({
   theme: 'dark',
   primaryTarget: 'zh-CN',
   secondaryTarget: 'en',
+  locale: 'zh-CN',
 })
 
 const hotkeyConfig = ref<HotkeyConfig>({
@@ -452,9 +446,12 @@ const loadSettings = async () => {
     settingsForm.value.theme = loadedSettings.theme || 'dark'
     settingsForm.value.primaryTarget = loadedSettings.primary_target || 'zh-CN'
     settingsForm.value.secondaryTarget = loadedSettings.secondary_target || 'en'
+    settingsForm.value.locale = loadedSettings.locale || (locale.value as SupportedLocale) || 'zh-CN'
     settingsStore.setTheme(settingsForm.value.theme)
     settingsStore.setPrimaryTarget(settingsForm.value.primaryTarget)
     settingsStore.setSecondaryTarget(settingsForm.value.secondaryTarget)
+    settingsStore.setLocale(settingsForm.value.locale)
+    locale.value = settingsForm.value.locale
     applyThemeClass(settingsForm.value.theme)
   } catch (error: any) {
     const errMsg = error?.message || String(error)
@@ -497,11 +494,14 @@ const saveSettings = async () => {
         theme: settingsForm.value.theme,
         primary_target: settingsForm.value.primaryTarget,
         secondary_target: settingsForm.value.secondaryTarget,
+        locale: settingsForm.value.locale,
       },
     })
     settingsStore.setTheme(settingsForm.value.theme)
     settingsStore.setPrimaryTarget(settingsForm.value.primaryTarget)
     settingsStore.setSecondaryTarget(settingsForm.value.secondaryTarget)
+    settingsStore.setLocale(settingsForm.value.locale)
+    locale.value = settingsForm.value.locale
     applyThemeClass(settingsForm.value.theme)
     showToast(t('settings.saved'), 'info')
   } catch (error: any) {
@@ -549,6 +549,7 @@ const resetDefaults = async () => {
     theme: 'dark',
     primaryTarget: 'zh-CN',
     secondaryTarget: 'en',
+    locale: 'zh-CN',
   }
   applyThemeClass(settingsForm.value.theme)
   await saveSettings()
@@ -570,7 +571,9 @@ const selectedLocale = computed({
 // 切换界面语言
 const changeLocale = (newLocale: string) => {
   locale.value = newLocale as SupportedLocale
+  settingsForm.value.locale = newLocale as SupportedLocale
   saveLocale(newLocale as SupportedLocale)
+  saveSettings()
   showToast(t('settings.interfaceLanguage.saved'), 'info')
 }
 </script>

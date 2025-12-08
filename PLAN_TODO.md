@@ -268,8 +268,8 @@
 - [x] 9.1.3 在 main.ts 中注册 i18n
 
 #### 9.2 创建语言包 ✅
-- [x] 9.2.1 创建 `src/locales/zh-CN.ts` 中文语言包
-- [x] 9.2.2 创建 `src/locales/en.ts` 英文语言包
+- [x] 9.2.1 创建 `src/locales/zh-CN.json` 中文语言包
+- [x] 9.2.2 创建 `src/locales/en.json` 英文语言包
 
 #### 9.3 替换硬编码文本 ✅
 - [x] 9.3.1 替换 MainTranslator.vue 中的文本
@@ -325,8 +325,8 @@
 - `src-tauri/src/services/ai/openai.rs`
 - `src-tauri/src/services/ai/claude.rs`
 - `src-tauri/src/services/ai/ollama.rs`
-- `src/locales/zh-CN.ts`
-- `src/locales/en.ts`
+- `src/locales/zh-CN.json`
+- `src/locales/en.json`
 - `src/locales/index.ts`
 
 **需要删除：**

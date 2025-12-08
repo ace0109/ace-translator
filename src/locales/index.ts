@@ -1,6 +1,6 @@
 import { createI18n } from 'vue-i18n'
-import zhCN from './zh-CN'
-import en from './en'
+import zhCN from './zh-CN.json'
+import en from './en.json'
 
 export type MessageSchema = typeof zhCN
 

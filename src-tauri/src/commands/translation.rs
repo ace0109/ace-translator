@@ -108,7 +108,6 @@ async fn get_enabled_providers(db: &sqlx::SqlitePool) -> Result<Vec<ProviderConf
     #[derive(sqlx::FromRow)]
     struct DbProviderConfig {
         provider_name: String,
-        enabled: i32,
         api_key: String,
         model: String,
         base_url: Option<String>,
