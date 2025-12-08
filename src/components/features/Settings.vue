@@ -9,18 +9,19 @@
         </CardHeader>
         <CardContent class="space-y-4">
           <!-- 服务商 Tab 栏 -->
-          <div class="flex border-b">
-            <button v-for="provider in providers" :key="provider.name"
-              class="relative px-4 py-2 text-sm font-medium transition-colors" :class="[
-                activeProvider === provider.name
-                  ? 'text-primary'
-                  : 'text-muted-foreground hover:text-foreground'
-              ]" @click="activeProvider = provider.name">
-              {{ provider.display_name }}
-              <span v-if="provider.config.enabled" class="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-green-500" />
-              <span v-if="activeProvider === provider.name" class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
-            </button>
-          </div>
+          <Tabs v-model="activeProvider" class="w-full">
+            <TabsList class="flex w-full flex-wrap gap-2 rounded-md border bg-muted/40 p-1">
+              <TabsTrigger
+                v-for="provider in providers"
+                :key="provider.name"
+                :value="provider.name"
+                class="relative flex-1 min-w-[120px] justify-center"
+              >
+                <span class="truncate">{{ provider.display_name }}</span>
+                <span v-if="provider.config.enabled" class="absolute right-2 h-2 w-2 rounded-full bg-green-500" />
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
 
           <!-- 当前服务商配置 -->
           <div v-if="currentProvider" class="space-y-4 pt-2">
@@ -37,7 +38,7 @@
                 </p>
               </div>
               <Switch :checked="currentProvider.name === 'zhipu' ? true : currentProvider.config.enabled"
-                :disabled="currentProvider.name === 'zhipu'" @update:checked="(v) => updateProviderEnabled(v)" />
+                :disabled="currentProvider.name === 'zhipu'" @update:checked="updateProviderEnabled" />
             </div>
 
             <!-- API Key -->
@@ -56,11 +57,18 @@
             <!-- 模型选择 -->
             <div class="space-y-2">
               <Label :for="`${currentProvider.name}-model`">{{ t('settings.providerConfig.model') }}</Label>
-              <Select :id="`${currentProvider.name}-model`"
-                :model-value="currentProvider.config.model || currentProvider.available_models[0]"
-                :options="currentProvider.available_models.map(m => ({ label: m, value: m }))"
-                :placeholder="t('settings.providerConfig.selectModel')"
-                @update:model-value="(v) => updateProviderModel(v)" />
+              <Select v-if="currentProvider" v-model="currentProviderModel" :id="`${currentProvider.name}-model`">
+                <SelectTrigger>
+                  <SelectValue :placeholder="t('settings.providerConfig.selectModel')" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem v-for="model in currentProvider.available_models" :key="model" :value="model">
+                      {{ model }}
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
               <p v-if="currentProvider.name === 'ollama'" class="text-xs text-muted-foreground">
                 {{ t('settings.providerConfig.ollamaModelHint') }}
               </p>
@@ -138,7 +146,18 @@
           <!-- 界面语言 -->
           <div class="space-y-2">
             <Label>{{ t('settings.interfaceLanguage.label') }}</Label>
-            <Select :model-value="locale" :options="localeOptions" @update:model-value="changeLocale" />
+            <Select v-model="selectedLocale">
+              <SelectTrigger>
+                <SelectValue :placeholder="t('settings.interfaceLanguage.select')" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem v-for="option in localeOptions" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                  </SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
             <p class="text-xs text-muted-foreground">{{ t('settings.interfaceLanguage.description') }}</p>
           </div>
 
@@ -205,7 +224,7 @@
               </p>
             </div>
             <Switch :checked="hotkeyConfig.double_copy_enabled"
-              @update:checked="(v) => updateHotkeyConfig('double_copy_enabled', v)" />
+              @update:checked="(v: boolean) => updateHotkeyConfig('double_copy_enabled', v)" />
           </div>
           <div class="flex items-center justify-between">
             <div>
@@ -215,7 +234,7 @@
               </p>
             </div>
             <Switch :checked="hotkeyConfig.alt_space_enabled"
-              @update:checked="(v) => updateHotkeyConfig('alt_space_enabled', v)" />
+              @update:checked="(v: boolean) => updateHotkeyConfig('alt_space_enabled', v)" />
           </div>
         </CardContent>
       </Card>
@@ -238,7 +257,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { Select } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import LanguageSelector from '../common/LanguageSelector.vue'
 import { showToast } from '@/lib/toast'
 import { isTauriEnv } from '@/utils/env'
@@ -312,6 +332,15 @@ const currentProvider = computed(() => {
   return providers.value.find(p => p.name === activeProvider.value)
 })
 
+const currentProviderModel = computed({
+  get: () => currentProvider.value?.config.model || currentProvider.value?.available_models[0] || '',
+  set: (value: string) => {
+    if (currentProvider.value) {
+      currentProvider.value.config.model = value
+    }
+  },
+})
+
 const applyThemeClass = (theme: string) => {
   if (theme === 'dark') {
     document.documentElement.classList.add('dark')
@@ -341,12 +370,6 @@ const updateProviderEnabled = (enabled: boolean) => {
       return
     }
     currentProvider.value.config.enabled = enabled
-  }
-}
-
-const updateProviderModel = (model: string) => {
-  if (currentProvider.value) {
-    currentProvider.value.config.model = model
   }
 }
 
@@ -538,6 +561,11 @@ const resetDefaults = async () => {
 const localeOptions = computed(() =>
   supportedLocales.map(l => ({ label: l.name, value: l.code }))
 )
+
+const selectedLocale = computed({
+  get: () => locale.value as SupportedLocale,
+  set: (newLocale: string) => changeLocale(newLocale),
+})
 
 // 切换界面语言
 const changeLocale = (newLocale: string) => {

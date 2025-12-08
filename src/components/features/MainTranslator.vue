@@ -1,174 +1,175 @@
 <template>
-  <div ref="mainContainer" class="relative flex w-full flex-col bg-background text-foreground rounded-xl border shadow-lg overflow-hidden">
-    <!-- Custom Title Bar -->
-    <header
+  <Card
+    ref="mainContainer"
+    class="relative flex w-full flex-col overflow-hidden rounded-xl border bg-background text-foreground shadow-lg"
+  >
+    <CardHeader
       data-tauri-drag-region
-      class="flex items-center justify-between h-8 px-2 bg-card border-b select-none shrink-0"
+      class="h-10 flex-row items-center justify-between gap-2 space-y-0 border-b bg-card/70 px-3 py-2"
     >
-      <span data-tauri-drag-region class="text-xs font-medium text-muted-foreground">{{ t('translator.title') }}</span>
-      <div class="flex items-center gap-1">
-        <!-- Pin Button -->
-        <button
-          class="p-1 rounded hover:bg-muted/60 transition"
-          :class="{ 'text-primary': pinned, 'text-muted-foreground': !pinned }"
+      <CardTitle data-tauri-drag-region class="text-xs font-semibold text-muted-foreground">
+        {{ t('translator.title') }}
+      </CardTitle>
+      <CardAction class="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          class="h-7 w-7 text-muted-foreground"
+          :class="{ 'text-primary': pinned }"
           @click="togglePin"
           :title="pinned ? t('translator.unpinWindow') : t('translator.pinWindow')"
         >
-          <component :is="pinned ? PinOff : Pin" class="h-3.5 w-3.5" />
-        </button>
-        <!-- Settings Button -->
-        <button
-          class="p-1 rounded hover:bg-muted/60 transition text-muted-foreground"
+          <component :is="pinned ? PinOff : Pin" class="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          class="h-7 w-7 text-muted-foreground"
           @click="openSettings"
           :title="t('translator.openSettings')"
         >
-          <Settings class="h-3.5 w-3.5" />
-        </button>
-        <!-- Close Button -->
-        <button
-          class="p-1 rounded hover:bg-destructive/80 hover:text-destructive-foreground transition text-muted-foreground"
+          <Settings class="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          class="h-7 w-7 text-muted-foreground hover:text-destructive"
           @click="hideWindow"
           :title="t('translator.closeWindow')"
         >
-          <X class="h-3.5 w-3.5" />
-        </button>
-      </div>
-    </header>
+          <X class="h-4 w-4" />
+        </Button>
+      </CardAction>
+    </CardHeader>
 
-    <!-- Content Area -->
-    <div class="flex flex-col">
-      <!-- Language Info Header -->
-      <div class="flex items-center justify-between border-b bg-card px-3 py-2 text-sm shadow-sm shrink-0">
+    <CardContent class="flex flex-col gap-3 p-4">
+      <div class="flex items-center justify-between rounded-lg border bg-muted/40 px-3 py-2 text-xs">
         <div class="flex items-center gap-2">
-          <span class="text-xs text-muted-foreground">{{ t('translator.detected') }}:</span>
-          <span class="rounded-md border bg-muted/40 px-2 py-0.5 text-xs">{{ detectedLabel }}</span>
+          <span class="text-muted-foreground">{{ t('translator.detected') }}</span>
+          <Badge variant="secondary">{{ detectedLabel }}</Badge>
         </div>
-        <div class="flex items-center gap-1">
-          <ArrowRight class="h-3 w-3 text-muted-foreground" />
-        </div>
+        <ArrowRight class="h-3.5 w-3.5 text-muted-foreground" />
         <div class="flex items-center gap-2">
-          <span class="text-xs text-muted-foreground">{{ t('translator.target') }}:</span>
-          <span class="rounded-md border bg-accent/60 px-2 py-0.5 text-xs text-accent-foreground">{{ targetLabel }}</span>
+          <span class="text-muted-foreground">{{ t('translator.target') }}</span>
+          <Badge>{{ targetLabel }}</Badge>
         </div>
       </div>
 
-      <!-- Source Text Input -->
-      <section class="shrink-0 border-b bg-muted/30 px-3 py-2">
-        <div class="flex items-center justify-between mb-1">
-          <p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{{ t('translator.original') }}</p>
-          <button
+      <div class="space-y-2 rounded-lg border bg-card/60 p-3">
+        <div class="flex items-center justify-between gap-2">
+          <Label class="text-[11px] uppercase tracking-wide text-muted-foreground">
+            {{ t('translator.original') }}
+          </Label>
+          <Button
             v-if="sourcePreview"
-            class="text-xs text-primary hover:underline"
+            variant="ghost"
+            size="sm"
+            class="h-7 px-2 text-xs"
             @click="startTranslation(sourcePreview)"
           >
             {{ t('translator.translateBtn') }}
-          </button>
+          </Button>
         </div>
-        <div class="relative">
-          <textarea
-            v-model="sourcePreview"
-            ref="sourceTextarea"
-            class="w-full min-h-[60px] max-h-[20rem] overflow-auto rounded-md border bg-background/80 p-2 text-sm leading-relaxed shadow-inner focus:outline-none focus:ring-1 focus:ring-primary resize-none"
-            :placeholder="t('translator.inputPlaceholder')"
-            @input="autoResizeTextarea"
-            @keydown.enter.exact.prevent="startTranslation(sourcePreview)"
-            @keydown.enter.ctrl.exact.prevent="startTranslation(sourcePreview)"
-            @keydown.enter.meta.exact.prevent="startTranslation(sourcePreview)"
-          ></textarea>
+        <Textarea
+          v-model="sourcePreview"
+          ref="sourceTextarea"
+          :placeholder="t('translator.inputPlaceholder')"
+          class="min-h-[80px] max-h-[20rem] resize-none bg-background/80"
+          @input="autoResizeTextarea"
+          @keydown.enter.exact.prevent="startTranslation(sourcePreview)"
+          @keydown.enter.ctrl.exact.prevent="startTranslation(sourcePreview)"
+          @keydown.enter.meta.exact.prevent="startTranslation(sourcePreview)"
+        />
+        <div class="flex justify-end gap-2 pt-1">
+          <Button v-if="streamingLoading" variant="outline" size="sm" @click="cancelCurrent">
+            {{ t('common.cancel') }}
+          </Button>
+          <Button size="sm" :disabled="!sourcePreview.trim()" @click="startTranslation(sourcePreview)">
+            {{ t('translator.translateBtn') }}
+          </Button>
         </div>
-      </section>
+      </div>
 
-      <!-- Translation Results -->
-      <section class="px-3 py-2 space-y-2">
+      <div class="space-y-2">
+        <Alert v-if="streamingError" variant="destructive">
+          <AlertTitle>{{ t('translator.translationFailed') }}</AlertTitle>
+          <AlertDescription>{{ streamingError }}</AlertDescription>
+        </Alert>
+
         <div v-if="enabledProviders.length === 0 && !streamingLoading" class="py-6 text-center text-sm text-muted-foreground">
           {{ t('translator.waitingTranslation') }}
         </div>
 
         <div v-else class="space-y-2">
-          <div
-            v-for="provider in enabledProviders"
-            :key="provider.name"
-            class="rounded-lg border bg-card shadow-sm overflow-hidden"
-          >
-            <!-- Provider Header -->
-            <div class="flex items-center justify-between border-b bg-muted/30 px-3 py-1.5">
+          <Card v-for="provider in enabledProviders" :key="providerKey(provider)" class="overflow-hidden border shadow-sm">
+            <CardHeader class="flex flex-row items-center justify-between gap-2 border-b bg-muted/30 py-2">
               <div class="flex items-center gap-2">
-                <span
-                  class="h-2 w-2 rounded-full"
-                  :class="{
-                    'bg-green-500': getProviderCardState(provider).success && !getProviderCardState(provider).loading,
-                    'bg-red-500': getProviderCardState(provider).error && !getProviderCardState(provider).loading,
-                    'bg-gray-400 animate-pulse': getProviderCardState(provider).loading,
-                    'bg-muted-foreground': !getProviderCardState(provider).loading && !getProviderCardState(provider).success && !getProviderCardState(provider).error,
-                  }"
-                />
-                <span class="text-xs font-medium">{{ provider.display_name }}</span>
-                <span class="text-[10px] text-muted-foreground">{{ getProviderCardState(provider).model || provider.config.model }}</span>
+                <span class="h-2 w-2 rounded-full" :class="statusDot(provider)" />
+                <div class="space-y-0.5">
+                  <p class="text-sm font-medium leading-none">{{ provider.display_name }}</p>
+                  <p class="text-[11px] text-muted-foreground">
+                    {{ getProviderCardState(provider).model || provider.config.model }}
+                  </p>
+                </div>
               </div>
-              <button
-                v-if="getProviderCardState(provider).success && !getProviderCardState(provider).loading"
-                class="inline-flex items-center gap-1 rounded border bg-muted/60 px-2 py-0.5 text-[10px] text-muted-foreground transition hover:bg-accent hover:text-accent-foreground"
-                @click="copyText(getProviderCardState(provider).translation)"
-                :title="t('common.copy')"
-              >
-                <Copy class="h-3 w-3" /> {{ t('common.copy') }}
-              </button>
-            </div>
+              <div class="flex items-center gap-2">
+                <Badge variant="outline" class="text-[10px] font-medium">
+                  {{ provider.config.base_url ? 'Custom' : 'Default' }}
+                </Badge>
+                <Button
+                  v-if="getProviderCardState(provider).success && !getProviderCardState(provider).loading"
+                  variant="ghost"
+                  size="sm"
+                  class="h-8 px-2 text-xs"
+                  @click="copyText(getProviderCardState(provider).translation)"
+                  :title="t('common.copy')"
+                >
+                  <Copy class="h-4 w-4" />
+                  <span class="ml-1">{{ t('common.copy') }}</span>
+                </Button>
+              </div>
+            </CardHeader>
 
-            <!-- Result Content -->
-            <div class="px-3 py-2">
-              <div v-if="getProviderCardState(provider).error" class="rounded-md border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/30 p-2">
-                <p class="text-xs text-red-600 dark:text-red-400">
+            <CardContent class="space-y-2 py-3">
+              <Alert v-if="getProviderCardState(provider).error" variant="destructive" class="py-2">
+                <AlertDescription>
                   {{ getProviderCardState(provider).error || t('translator.translationFailed') }}
-                </p>
-              </div>
-              <div v-else class="relative rounded-md border border-dashed bg-background/70 p-2">
-                <p class="text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap break-words min-h-[32px]">
+                </AlertDescription>
+              </Alert>
+              <div v-else class="relative rounded-md border border-dashed bg-background/70 p-3">
+                <p class="min-h-[32px] whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/90">
                   {{
                     getProviderCardState(provider).translation
                       || (getProviderCardState(provider).loading ? t('translator.translating') : t('translator.waitingTranslation'))
                   }}
                 </p>
-                <div
-                  v-if="getProviderCardState(provider).loading"
-                  class="absolute right-2 top-2 flex items-center justify-center"
-                >
+                <div v-if="getProviderCardState(provider).loading" class="absolute right-2 top-2 flex items-center justify-center">
                   <LoadingSpinner />
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
-
-    <!-- API Key Prompt Dialog -->
-    <transition name="fade">
-      <div
-        v-if="showApiKeyPrompt"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur"
-      >
-        <div class="w-[320px] rounded-lg border bg-card p-4 shadow-lg">
-          <h3 class="text-base font-semibold text-foreground">{{ t('translator.noProvider') }}</h3>
-          <p class="mt-2 text-sm text-muted-foreground">{{ t('translator.noProviderDesc') }}</p>
-          <div class="mt-4 flex justify-end gap-2">
-            <button
-              class="rounded border px-3 py-1 text-sm text-muted-foreground transition hover:bg-muted/60"
-              @click="dismissApiPrompt"
-            >
-              {{ t('common.later') }}
-            </button>
-            <button
-              class="rounded bg-primary px-3 py-1 text-sm text-primary-foreground transition hover:brightness-110"
-              @click="goToSettings"
-            >
-              {{ t('common.goToSettings') }}
-            </button>
-          </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
-    </transition>
-  </div>
+    </CardContent>
+
+    <Dialog :open="showApiKeyPrompt" @update:open="(open) => (showApiKeyPrompt = open)">
+      <DialogContent class="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{{ t('translator.noProvider') }}</DialogTitle>
+          <DialogDescription>{{ t('translator.noProviderDesc') }}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter class="gap-2">
+          <Button variant="outline" @click="dismissApiPrompt">
+            {{ t('common.later') }}
+          </Button>
+          <Button @click="goToSettings">
+            {{ t('common.goToSettings') }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </Card>
 </template>
 
 <script setup lang="ts">
@@ -182,6 +183,13 @@ import { languageOptions } from '@/constants/languages'
 import { showToast } from '@/lib/toast'
 import { useStreamingTranslation } from '@/composables/useStreamingTranslation'
 import { Pin, PinOff, Settings, X, Copy, ArrowRight } from 'lucide-vue-next'
+import { Button } from '@/components/ui/button'
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { isTauriEnv } from '@/utils/env'
 
 const { t } = useI18n()
@@ -215,10 +223,12 @@ interface MultiProviderResult {
   results: ProviderTranslationResult[]
 }
 
-const mainContainer = ref<HTMLElement | null>(null)
+type ElementRef<T extends HTMLElement> = T | { $el?: T }
+
+const mainContainer = ref<ElementRef<HTMLElement> | null>(null)
 const translationResults = ref<ProviderTranslationResult[]>([])
 const sourcePreview = ref('')
-const sourceTextarea = ref<HTMLTextAreaElement | null>(null)
+const sourceTextarea = ref<ElementRef<HTMLTextAreaElement> | null>(null)
 // const isLoading = ref(false) // No longer needed, replaced by streamingLoading
 const detectedLang = ref('')
 const targetLang = ref('')
@@ -234,6 +244,12 @@ const { streamingResults, isLoading: streamingLoading, error: streamingError, re
     if (target) targetLang.value = target
   },
 )
+
+const resolveEl = <T extends HTMLElement>(el: ElementRef<T> | null) => {
+  if (!el) return null
+  if (el instanceof HTMLElement) return el
+  return el.$el instanceof HTMLElement ? el.$el : null
+}
 
 const langLabel = (lang: string) => {
   if (!lang) return '...'
@@ -277,7 +293,7 @@ const providerCardStates = computed(() => {
         loading: stream.loading,
         translation: stream.content,
         success: stream.isComplete && !stream.error,
-        error: stream.error,
+        error: stream.error || null,
         model: stream.model || model,
       })
       return
@@ -311,6 +327,14 @@ const getProviderCardState = (provider: ProviderInfo) => {
     error: null,
     model: provider.config.model || provider.available_models[0] || '',
   }
+}
+
+const statusDot = (provider: ProviderInfo) => {
+  const state = getProviderCardState(provider)
+  if (state.success && !state.loading) return 'bg-green-500'
+  if (state.error && !state.loading) return 'bg-red-500'
+  if (state.loading) return 'bg-gray-400 animate-pulse'
+  return 'bg-muted-foreground'
 }
 
 const showApiKeyPrompt = ref(false)
@@ -567,11 +591,11 @@ onUnmounted(() => {
 let resizeTimer: number | null = null
 const updateWindowHeight = async () => {
   await nextTick()
-  if (!mainContainer.value) return
+  const containerEl = resolveEl(mainContainer.value)
+  if (!containerEl) return
 
-  // Calculate the content height needed
-  // We use scrollHeight of the container to get the full content height
-  const contentHeight = mainContainer.value.scrollHeight
+  // Calculate the content height needed using the rendered card element
+  const contentHeight = containerEl.scrollHeight
   
   // Add some padding for safety (e.g. borders/shadows)
   // Note: If the content is smaller than min height, backend will handle it.
@@ -636,7 +660,7 @@ const cancelCurrent = async () => {
 
 // Auto-resize source textarea within bounds
 const autoResizeTextarea = () => {
-  const el = sourceTextarea.value
+  const el = resolveEl(sourceTextarea.value)
   if (!el) return
   el.style.height = 'auto'
   const lineHeight = parseInt(getComputedStyle(el).lineHeight || '18', 10)

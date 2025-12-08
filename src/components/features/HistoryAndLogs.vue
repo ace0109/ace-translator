@@ -1,102 +1,90 @@
 <template>
-  <div class="min-h-screen bg-background text-foreground flex flex-col">
-    <!-- Tab Bar -->
-    <div class="flex border-b bg-card shrink-0">
-      <button
-        v-for="tab in tabs"
-        :key="tab.id"
-        class="flex-1 px-4 py-3 text-sm font-medium transition-colors"
-        :class="{
-          'border-b-2 border-primary text-primary': activeTab === tab.id,
-          'text-muted-foreground hover:text-foreground hover:bg-muted/50': activeTab !== tab.id
-        }"
-        @click="activeTab = tab.id"
-      >
+  <Tabs v-model="activeTab" class="flex min-h-screen flex-col bg-background text-foreground">
+    <TabsList class="grid w-full grid-cols-3 rounded-none border-b bg-card px-2 py-2">
+      <TabsTrigger v-for="tab in tabs" :key="tab.id" :value="tab.id" class="h-9">
         {{ tab.label }}
-      </button>
-    </div>
+      </TabsTrigger>
+    </TabsList>
 
-    <!-- Tab Content -->
-    <div class="flex-1 overflow-hidden">
-      <!-- History Tab -->
-      <div v-show="activeTab === 'history'" class="h-full p-4 overflow-auto">
-        <div v-if="history.length === 0" class="text-muted-foreground text-center py-8">
+    <TabsContent value="history" class="flex-1 overflow-hidden">
+      <div class="h-full overflow-auto p-4">
+        <div v-if="history.length === 0" class="py-8 text-center text-muted-foreground">
           {{ t('history.translationHistory.empty') }}
         </div>
-        <div v-else class="space-y-2">
-          <div
+        <div v-else class="space-y-3">
+          <Card
             v-for="(item, index) in history"
             :key="item.id"
-            class="rounded-lg border bg-card p-3 shadow-sm hover:bg-muted/30 transition cursor-pointer"
+            class="cursor-pointer transition hover:border-primary/40"
             @click="toggleHistoryExpand(index)"
           >
-            <div class="flex items-center justify-between">
-              <div class="flex-1 min-w-0">
-                <p class="text-sm text-foreground truncate">{{ item.source_text }}</p>
-                <p class="text-xs text-muted-foreground mt-1 flex items-center gap-2">
+            <CardHeader class="flex flex-row items-start justify-between gap-2">
+              <div class="min-w-0 flex-1 space-y-1">
+                <CardTitle class="truncate text-sm font-medium leading-tight">{{ item.source_text }}</CardTitle>
+                <CardDescription class="flex flex-wrap items-center gap-2 text-xs">
                   <span>{{ item.source_lang }} → {{ item.target_lang }}</span>
-                  <span v-if="item.provider" class="px-1.5 py-0.5 rounded bg-muted text-[10px]">{{ item.provider }}</span>
-                  <span>{{ formatTime(item.created_at) }}</span>
-                </p>
+                  <Badge v-if="item.provider" variant="secondary">{{ item.provider }}</Badge>
+                  <span class="text-muted-foreground">{{ formatTime(item.created_at) }}</span>
+                </CardDescription>
               </div>
-              <ChevronDown
-                class="h-4 w-4 text-muted-foreground transition-transform shrink-0 ml-2"
-                :class="{ 'rotate-180': expandedHistory === index }"
-              />
-            </div>
-            <div v-if="expandedHistory === index" class="mt-3 pt-3 border-t">
-              <div class="flex items-center justify-between mb-2">
+              <Button variant="ghost" size="icon" class="shrink-0" @click.stop="toggleHistoryExpand(index)">
+                <ChevronDown
+                  class="h-4 w-4 text-muted-foreground transition-transform"
+                  :class="{ 'rotate-180': expandedHistory === index }"
+                />
+              </Button>
+            </CardHeader>
+            <CardContent v-if="expandedHistory === index" class="space-y-3 border-t pt-3">
+              <div class="flex items-center justify-between gap-2">
                 <p class="text-xs font-medium text-muted-foreground">{{ t('history.translationHistory.result') }}</p>
-                <div class="flex gap-1">
-                  <button
-                    class="inline-flex items-center gap-1 rounded border bg-muted/60 px-2 py-1 text-xs text-muted-foreground transition hover:bg-accent hover:text-accent-foreground"
-                    @click.stop="copyText(item.translated_text)"
-                  >
-                    <Copy class="h-3 w-3" /> {{ t('common.copy') }}
-                  </button>
-                  <button
-                    class="inline-flex items-center gap-1 rounded border bg-destructive/10 px-2 py-1 text-xs text-destructive transition hover:bg-destructive hover:text-destructive-foreground"
-                    @click.stop="deleteHistoryItem(item.id)"
-                  >
-                    <Trash2 class="h-3 w-3" /> {{ t('common.delete') }}
-                  </button>
+                <div class="flex gap-2">
+                  <Button variant="ghost" size="sm" class="h-8 px-2 text-xs" @click.stop="copyText(item.translated_text)">
+                    <Copy class="h-4 w-4" />
+                    <span class="ml-1">{{ t('common.copy') }}</span>
+                  </Button>
+                  <Button variant="destructive" size="sm" class="h-8 px-2 text-xs" @click.stop="deleteHistoryItem(item.id)">
+                    <Trash2 class="h-4 w-4" />
+                    <span class="ml-1">{{ t('common.delete') }}</span>
+                  </Button>
                 </div>
               </div>
-              <p class="text-sm text-foreground whitespace-pre-wrap bg-muted/30 rounded p-2">{{ item.translated_text }}</p>
-              <p v-if="item.model" class="text-[10px] text-muted-foreground mt-2">
+              <p class="whitespace-pre-wrap rounded-md bg-muted/40 p-3 text-sm leading-relaxed text-foreground">{{ item.translated_text }}</p>
+              <p v-if="item.model" class="text-[10px] text-muted-foreground">
                 {{ t('history.translationHistory.model') }}: {{ item.model }}
               </p>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
+    </TabsContent>
 
-      <!-- Cache Tab -->
-      <div v-show="activeTab === 'cache'" class="h-full p-4">
-        <div class="rounded-lg border bg-card p-4 shadow-sm">
-          <h3 class="text-base font-semibold text-foreground mb-4">{{ t('history.cacheManagement.stats') }}</h3>
-          <div class="space-y-3">
-            <div class="flex items-center justify-between">
-              <span class="text-sm text-muted-foreground">{{ t('history.cacheManagement.count') }}</span>
-              <span class="text-sm font-medium text-foreground">{{ cacheStats.count }} {{ t('history.cacheManagement.entries') }}</span>
-            </div>
-            <div class="flex items-center justify-between">
-              <span class="text-sm text-muted-foreground">{{ t('history.cacheManagement.size') }}</span>
-              <span class="text-sm font-medium text-foreground">{{ formatSize(cacheStats.size) }}</span>
-            </div>
+    <TabsContent value="cache" class="flex-1 overflow-auto p-4">
+      <Card class="max-w-xl">
+        <CardHeader>
+          <CardTitle>{{ t('history.cacheManagement.stats') }}</CardTitle>
+        </CardHeader>
+        <CardContent class="space-y-3">
+          <div class="flex items-center justify-between text-sm">
+            <span class="text-muted-foreground">{{ t('history.cacheManagement.count') }}</span>
+            <span class="font-medium text-foreground">{{ cacheStats.count }} {{ t('history.cacheManagement.entries') }}</span>
           </div>
-          <div class="mt-6 flex justify-end">
+          <div class="flex items-center justify-between text-sm">
+            <span class="text-muted-foreground">{{ t('history.cacheManagement.size') }}</span>
+            <span class="font-medium text-foreground">{{ formatSize(cacheStats.size) }}</span>
+          </div>
+          <div class="flex justify-end pt-2">
             <Button @click="clearCache" variant="destructive" size="sm">
               {{ t('history.cacheManagement.clear') }}
             </Button>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
+    </TabsContent>
 
-      <!-- Logs Tab -->
-      <div v-show="activeTab === 'logs'" class="h-full flex flex-col p-4">
-        <div class="flex justify-between items-center mb-4">
-          <h1 class="text-base font-semibold">{{ t('history.appLogs.title') }}</h1>
+    <TabsContent value="logs" class="flex-1 overflow-hidden">
+      <Card class="m-4 flex h-[calc(100vh-140px)] flex-col">
+        <CardHeader class="flex flex-row items-center justify-between gap-2">
+          <CardTitle class="text-base">{{ t('history.appLogs.title') }}</CardTitle>
           <div class="flex gap-2">
             <Button @click="refreshLogs" variant="outline" size="sm">
               {{ t('common.refresh') }}
@@ -105,61 +93,69 @@
               {{ t('history.appLogs.clear') }}
             </Button>
           </div>
-        </div>
-
-        <div
-          ref="logContainer"
-          class="flex-1 bg-muted/30 rounded-lg p-4 overflow-auto font-mono text-sm border"
-          @scroll="handleScroll"
-        >
-          <div v-if="logs.length === 0" class="text-muted-foreground text-center py-8">
-            {{ t('history.appLogs.empty') }}
-          </div>
-          <div v-else>
-            <div
-              v-for="(log, index) in logs"
-              :key="index"
-              class="py-1 border-b border-border last:border-0"
-              :class="{
-                'text-destructive': log.level === 'ERROR',
-                'text-yellow-500 dark:text-yellow-400': log.level === 'DEBUG',
-                'text-green-600 dark:text-green-400': log.level === 'INFO',
-              }"
-            >
-              <span class="text-muted-foreground">{{ log.timestamp }}</span>
-              <span class="mx-2 px-1 rounded text-xs" :class="{
-                'bg-destructive/20': log.level === 'ERROR',
-                'bg-yellow-500/20': log.level === 'DEBUG',
-                'bg-green-500/20': log.level === 'INFO',
-              }">{{ log.level }}</span>
-              <span>{{ log.message }}</span>
+        </CardHeader>
+        <CardContent class="flex flex-1 flex-col gap-3 overflow-hidden">
+          <div
+            ref="logContainer"
+            class="flex-1 overflow-auto rounded-lg border bg-muted/30 p-4 font-mono text-sm"
+            @scroll="handleScroll"
+          >
+            <div v-if="logs.length === 0" class="py-8 text-center text-muted-foreground">
+              {{ t('history.appLogs.empty') }}
+            </div>
+            <div v-else>
+              <div
+                v-for="(log, index) in logs"
+                :key="index"
+                class="border-b border-border py-1 last:border-0"
+                :class="{
+                  'text-destructive': log.level === 'ERROR',
+                  'text-yellow-500 dark:text-yellow-400': log.level === 'DEBUG',
+                  'text-green-600 dark:text-green-400': log.level === 'INFO',
+                }"
+              >
+                <span class="text-muted-foreground">{{ log.timestamp }}</span>
+                <Badge :variant="log.level === 'ERROR' ? 'destructive' : 'secondary'" class="mx-2 px-2 py-0 text-[10px]">
+                  {{ log.level }}
+                </Badge>
+                <span>{{ log.message }}</span>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div class="mt-2 text-xs text-muted-foreground flex items-center justify-between">
-          <span>{{ t('history.appLogs.total', { count: logs.length }) }} | {{ t('history.appLogs.autoRefresh') }}{{ autoRefresh ? t('history.appLogs.enabled') : t('history.appLogs.disabled') }}</span>
-          <div class="flex items-center gap-4">
-            <label class="cursor-pointer flex items-center">
-              <input type="checkbox" v-model="autoScroll" class="mr-1" />
-              {{ t('history.appLogs.autoScroll') }}
-            </label>
-            <label class="cursor-pointer flex items-center">
-              <input type="checkbox" v-model="autoRefresh" class="mr-1" />
-              {{ t('history.appLogs.autoRefresh') }}
-            </label>
+          <div class="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+            <span>{{ t('history.appLogs.total', { count: logs.length }) }} | {{ t('history.appLogs.autoRefresh') }}{{ autoRefresh ? t('history.appLogs.enabled') : t('history.appLogs.disabled') }}</span>
+            <div class="flex items-center gap-4">
+              <div class="flex items-center gap-2">
+                <Checkbox id="auto-scroll" v-model:checked="autoScroll" />
+                <Label for="auto-scroll" class="cursor-pointer">
+                  {{ t('history.appLogs.autoScroll') }}
+                </Label>
+              </div>
+              <div class="flex items-center gap-2">
+                <Checkbox id="auto-refresh" v-model:checked="autoRefresh" />
+                <Label for="auto-refresh" class="cursor-pointer">
+                  {{ t('history.appLogs.autoRefresh') }}
+                </Label>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-    </div>
-  </div>
+        </CardContent>
+      </Card>
+    </TabsContent>
+  </Tabs>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, nextTick, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ChevronDown, Copy, Trash2 } from 'lucide-vue-next'
 import { showToast } from '@/lib/toast'
 
