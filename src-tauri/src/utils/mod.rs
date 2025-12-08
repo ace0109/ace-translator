@@ -1,4 +1,4 @@
-pub mod error;
 pub mod config;
-pub mod window;
+pub mod error;
 pub mod tray;
+pub mod window;

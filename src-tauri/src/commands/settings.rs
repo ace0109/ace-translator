@@ -1,14 +1,14 @@
-use crate::AppState;
-use tauri::{AppHandle, State, Emitter};
-use serde::{Deserialize, Serialize};
-use crate::services::encryption::{encrypt_api_key, decrypt_api_key};
-use crate::services::ai::{ProviderConfig, ApiTestResponse};
-use crate::services::ai::zhipu::ZhipuProvider;
-use crate::services::ai::openai::OpenAIProvider;
+use crate::config::providers;
 use crate::services::ai::claude::ClaudeProvider;
 use crate::services::ai::ollama::{OllamaProvider, OLLAMA_MODELS};
+use crate::services::ai::openai::OpenAIProvider;
+use crate::services::ai::zhipu::ZhipuProvider;
 use crate::services::ai::AIProvider;
-use crate::config::providers;
+use crate::services::ai::{ApiTestResponse, ProviderConfig};
+use crate::services::encryption::{decrypt_api_key, encrypt_api_key};
+use crate::AppState;
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter, State};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppSettings {
@@ -42,7 +42,11 @@ async fn get_val(pool: &sqlx::SqlitePool, key: &str) -> Option<String> {
 }
 
 #[tauri::command]
-pub async fn save_settings(app: AppHandle, state: State<'_, AppState>, settings: AppSettings) -> Result<(), String> {
+pub async fn save_settings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    settings: AppSettings,
+) -> Result<(), String> {
     // Encrypt API Key
     let encrypted_key = encrypt_api_key(&settings.api_key)?;
 
@@ -65,7 +69,8 @@ pub async fn save_settings(app: AppHandle, state: State<'_, AppState>, settings:
     }
 
     // Emit event to all windows
-    app.emit("settings-changed", &settings).map_err(|e| e.to_string())?;
+    app.emit("settings-changed", &settings)
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -73,10 +78,18 @@ pub async fn save_settings(app: AppHandle, state: State<'_, AppState>, settings:
 #[tauri::command]
 pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, String> {
     let encrypted_key = get_val(&state.db, "api_key").await.unwrap_or_default();
-    let theme = get_val(&state.db, "theme").await.unwrap_or_else(|| "dark".to_string());
-    let primary_target = get_val(&state.db, "primary_target").await.unwrap_or_else(|| "zh-CN".to_string());
-    let secondary_target = get_val(&state.db, "secondary_target").await.unwrap_or_else(|| "en".to_string());
-    let locale = get_val(&state.db, "locale").await.unwrap_or_else(|| "zh-CN".to_string());
+    let theme = get_val(&state.db, "theme")
+        .await
+        .unwrap_or_else(|| "dark".to_string());
+    let primary_target = get_val(&state.db, "primary_target")
+        .await
+        .unwrap_or_else(|| "zh-CN".to_string());
+    let secondary_target = get_val(&state.db, "secondary_target")
+        .await
+        .unwrap_or_else(|| "en".to_string());
+    let locale = get_val(&state.db, "locale")
+        .await
+        .unwrap_or_else(|| "zh-CN".to_string());
 
     let api_key = if !encrypted_key.is_empty() {
         decrypt_api_key(&encrypted_key).unwrap_or_default()
@@ -120,39 +133,65 @@ pub async fn get_provider_configs(state: State<'_, AppState>) -> Result<Vec<Prov
             String::new()
         };
 
-        let (display_name, available_models, supports_base_url, default_model) = match row.provider_name.as_str() {
-            "zhipu" => (
-                "智谱AI",
-                providers::ZHIPU_MODELS.iter().map(|m| m.id.to_string()).collect(),
-                false,
-                providers::DEFAULT_ZHIPU_MODEL.to_string(),
-            ),
-            "openai" => (
-                "OpenAI",
-                providers::OPENAI_MODELS.iter().map(|m| m.id.to_string()).collect(),
-                true,
-                providers::OPENAI_MODELS.first().map(|m| m.id).unwrap_or("gpt-4o-mini").to_string(),
-            ),
-            "claude" => (
-                "Claude",
-                providers::CLAUDE_MODELS.iter().map(|m| m.id.to_string()).collect(),
-                false,
-                providers::CLAUDE_MODELS.first().map(|m| m.id).unwrap_or("claude-3-5-haiku-latest").to_string(),
-            ),
-            "ollama" => (
-                "Ollama",
-                OLLAMA_MODELS.iter().map(|s| s.to_string()).collect(),
-                true,
-                "llama3.2".to_string(),
-            ),
-            _ => continue,
-        };
+        let (display_name, available_models, supports_base_url, default_model) =
+            match row.provider_name.as_str() {
+                "zhipu" => (
+                    "智谱AI",
+                    providers::ZHIPU_MODELS
+                        .iter()
+                        .map(|m| m.id.to_string())
+                        .collect(),
+                    false,
+                    providers::DEFAULT_ZHIPU_MODEL.to_string(),
+                ),
+                "openai" => (
+                    "OpenAI",
+                    providers::OPENAI_MODELS
+                        .iter()
+                        .map(|m| m.id.to_string())
+                        .collect(),
+                    true,
+                    providers::OPENAI_MODELS
+                        .first()
+                        .map(|m| m.id)
+                        .unwrap_or("gpt-4o-mini")
+                        .to_string(),
+                ),
+                "claude" => (
+                    "Claude",
+                    providers::CLAUDE_MODELS
+                        .iter()
+                        .map(|m| m.id.to_string())
+                        .collect(),
+                    false,
+                    providers::CLAUDE_MODELS
+                        .first()
+                        .map(|m| m.id)
+                        .unwrap_or("claude-3-5-haiku-latest")
+                        .to_string(),
+                ),
+                "ollama" => (
+                    "Ollama",
+                    OLLAMA_MODELS.iter().map(|s| s.to_string()).collect(),
+                    true,
+                    "llama3.2".to_string(),
+                ),
+                _ => continue,
+            };
 
         // fallback to default model if DB value is empty (helps fresh installs)
-        let model = if row.model.is_empty() { default_model.clone() } else { row.model.clone() };
+        let model = if row.model.is_empty() {
+            default_model.clone()
+        } else {
+            row.model.clone()
+        };
 
         let provider_name = row.provider_name;
-        let enabled = if provider_name == "zhipu" { true } else { row.enabled != 0 };
+        let enabled = if provider_name == "zhipu" {
+            true
+        } else {
+            row.enabled != 0
+        };
 
         providers.push(ProviderInfo {
             name: provider_name.clone(),
@@ -177,7 +216,7 @@ pub async fn get_provider_configs(state: State<'_, AppState>) -> Result<Vec<Prov
 pub async fn save_provider_config(
     app: AppHandle,
     state: State<'_, AppState>,
-    config: ProviderConfig
+    config: ProviderConfig,
 ) -> Result<(), String> {
     let encrypted_key = if !config.api_key.is_empty() {
         encrypt_api_key(&config.api_key)?
@@ -208,7 +247,8 @@ pub async fn save_provider_config(
     .map_err(|e| e.to_string())?;
 
     // Emit event to notify about config change
-    app.emit("provider-config-changed", &config.provider_name).map_err(|e| e.to_string())?;
+    app.emit("provider-config-changed", &config.provider_name)
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -270,10 +310,12 @@ impl Default for HotkeyConfig {
 /// 获取快捷键配置
 #[tauri::command]
 pub async fn get_hotkey_config(state: State<'_, AppState>) -> Result<HotkeyConfig, String> {
-    let double_copy = get_val(&state.db, "hotkey_double_copy").await
+    let double_copy = get_val(&state.db, "hotkey_double_copy")
+        .await
         .map(|v| v == "true")
         .unwrap_or(true);
-    let alt_space = get_val(&state.db, "hotkey_alt_space").await
+    let alt_space = get_val(&state.db, "hotkey_alt_space")
+        .await
         .map(|v| v == "true")
         .unwrap_or(true);
 
@@ -288,7 +330,7 @@ pub async fn get_hotkey_config(state: State<'_, AppState>) -> Result<HotkeyConfi
 pub async fn save_hotkey_config(
     app: AppHandle,
     state: State<'_, AppState>,
-    config: HotkeyConfig
+    config: HotkeyConfig,
 ) -> Result<(), String> {
     let queries = [
         ("hotkey_double_copy", config.double_copy_enabled.to_string()),
@@ -313,7 +355,8 @@ pub async fn save_hotkey_config(
     }
 
     // 发送事件通知
-    app.emit("hotkey-config-changed", &config).map_err(|e| e.to_string())?;
+    app.emit("hotkey-config-changed", &config)
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }

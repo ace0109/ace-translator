@@ -211,6 +211,19 @@
     "enabled": "Enabled",
     "disabled": "Disabled",
     "devModeHint": "Tap the version number 7 times to unlock developer mode and show Logs in tray.",
-    "devModeUnlocked": "Developer mode enabled"
+    "devModeUnlocked": "Developer mode enabled",
+    "update": {
+      "checkForUpdates": "Check for Updates",
+      "checking": "Checking...",
+      "newVersion": "New Version",
+      "downloading": "Downloading...",
+      "downloadAndInstall": "Download and Install",
+      "upToDate": "You're up to date",
+      "foundUpdate": "Found new version {version}",
+      "checkFailed": "Failed to check for updates",
+      "downloadFailed": "Failed to download update",
+      "installSuccess": "Update installed, restarting app",
+      "noUpdate": "No update available"
+    }
   }
 }

@@ -1,5 +1,5 @@
-use tauri::AppHandle;
 use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder};
+use tauri::AppHandle;
 use tauri::Manager;
 
 /// 构建托盘菜单，根据 dev_mode 决定是否显示日志入口。

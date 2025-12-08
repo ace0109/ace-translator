@@ -211,6 +211,19 @@
     "enabled": "已启用",
     "disabled": "未启用",
     "devModeHint": "连续点击版本号 7 次解锁开发者模式，托盘将显示日志入口。",
-    "devModeUnlocked": "开发者模式已开启"
+    "devModeUnlocked": "开发者模式已开启",
+    "update": {
+      "checkForUpdates": "检查更新",
+      "checking": "检查中...",
+      "newVersion": "新版本",
+      "downloading": "下载中...",
+      "downloadAndInstall": "下载并安装",
+      "upToDate": "已是最新版本",
+      "foundUpdate": "发现新版本 {version}",
+      "checkFailed": "检查更新失败",
+      "downloadFailed": "下载更新失败",
+      "installSuccess": "更新已安装，即将重启应用",
+      "noUpdate": "没有可用的更新"
+    }
   }
 }

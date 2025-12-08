@@ -160,7 +160,8 @@ pub trait AIProvider: Send + Sync {
     async fn detect_language(&self, text: &str) -> Result<String, AIError>;
 
     /// 执行翻译（非流式）
-    async fn translate(&self, request: &TranslationRequest) -> Result<TranslationResponse, AIError>;
+    async fn translate(&self, request: &TranslationRequest)
+        -> Result<TranslationResponse, AIError>;
 
     /// 执行流式翻译
     /// 默认实现：调用非流式翻译，然后发送完整结果
@@ -171,33 +172,39 @@ pub trait AIProvider: Send + Sync {
         request_id: u64,
     ) -> Result<(), AIError> {
         // 发送开始事件
-        let _ = sender.send(StreamEvent::Start {
-            provider: self.name().to_string(),
-            model: self.current_model().to_string(),
-            request_id,
-        }).await;
+        let _ = sender
+            .send(StreamEvent::Start {
+                provider: self.name().to_string(),
+                model: self.current_model().to_string(),
+                request_id,
+            })
+            .await;
 
         // 调用非流式翻译
         match self.translate(request).await {
             Ok(response) => {
                 // 发送完成事件（包含完整翻译）
-                let _ = sender.send(StreamEvent::Done {
-                    provider: response.provider.clone(),
-                    model: response.model.clone(),
-                    detected_source_lang: request.source_lang.clone(),
-                    target_lang: request.target_lang.clone(),
-                    full_translation: response.translation.clone(),
-                    request_id,
-                }).await;
+                let _ = sender
+                    .send(StreamEvent::Done {
+                        provider: response.provider.clone(),
+                        model: response.model.clone(),
+                        detected_source_lang: request.source_lang.clone(),
+                        target_lang: request.target_lang.clone(),
+                        full_translation: response.translation.clone(),
+                        request_id,
+                    })
+                    .await;
                 Ok(())
             }
             Err(e) => {
                 // 发送错误事件
-                let _ = sender.send(StreamEvent::Error {
-                    provider: self.name().to_string(),
-                    error: e.to_string(),
-                    request_id,
-                }).await;
+                let _ = sender
+                    .send(StreamEvent::Error {
+                        provider: self.name().to_string(),
+                        error: e.to_string(),
+                        request_id,
+                    })
+                    .await;
                 Err(e)
             }
         }
@@ -213,7 +220,9 @@ pub trait AIProvider: Send + Sync {
         if result.success {
             Ok(true)
         } else {
-            Err(AIError::RequestFailed(result.error.unwrap_or_else(|| "未知错误".to_string())))
+            Err(AIError::RequestFailed(
+                result.error.unwrap_or_else(|| "未知错误".to_string()),
+            ))
         }
     }
 }

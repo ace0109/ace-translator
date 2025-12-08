@@ -1,6 +1,6 @@
-use std::sync::{Arc, Mutex};
-use std::collections::VecDeque;
 use chrono::Local;
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 
 const MAX_LOG_ENTRIES: usize = 500;
 

@@ -36,7 +36,7 @@ export function useStreamingTranslation(
   const isLoading = ref(false)
   const error = ref<string | null>(null)
   let unlisten: (() => void) | null = null
-  let timeoutHandle: ReturnType<typeof window.setTimeout> | null = null
+  let timeoutHandle: number | null = null
 
   // 初始化监听器
   const initListener = async () => {

@@ -1,20 +1,17 @@
-use crate::services::ai::{
-    ProviderConfig, TranslationRequest, TranslationResponse, AIProvider, StreamEvent,
-    zhipu::ZhipuProvider,
-    openai::OpenAIProvider,
-    claude::ClaudeProvider,
-    ollama::OllamaProvider,
-    key::resolve_default_zhipu_api_key,
-};
 use crate::config::providers::{self, DEFAULT_ZHIPU_MODEL};
+use crate::services::ai::{
+    claude::ClaudeProvider, key::resolve_default_zhipu_api_key, ollama::OllamaProvider,
+    openai::OpenAIProvider, zhipu::ZhipuProvider, AIProvider, ProviderConfig, StreamEvent,
+    TranslationRequest, TranslationResponse,
+};
 use crate::services::encryption::decrypt_api_key;
 use crate::AppState;
-use futures::future::{join_all, Abortable, AbortHandle, Aborted};
+use futures::future::{join_all, AbortHandle, Abortable, Aborted};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, State, Manager};
-use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::mpsc;
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{AppHandle, Emitter, Manager, State};
+use tokio::sync::mpsc;
 
 /// 单个服务商的翻译结果
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -82,7 +79,13 @@ async fn zhipu_detector_config(db: &sqlx::SqlitePool) -> Result<ProviderConfig, 
 
     let mut api_key = row
         .as_ref()
-        .and_then(|r| if r.api_key.is_empty() { None } else { Some(decrypt_api_key(&r.api_key).unwrap_or_default()) })
+        .and_then(|r| {
+            if r.api_key.is_empty() {
+                None
+            } else {
+                Some(decrypt_api_key(&r.api_key).unwrap_or_default())
+            }
+        })
         .unwrap_or_default();
 
     if api_key.is_empty() {
@@ -91,7 +94,13 @@ async fn zhipu_detector_config(db: &sqlx::SqlitePool) -> Result<ProviderConfig, 
 
     let model = row
         .as_ref()
-        .map(|r| if r.model.is_empty() { DEFAULT_ZHIPU_MODEL.to_string() } else { r.model.clone() })
+        .map(|r| {
+            if r.model.is_empty() {
+                DEFAULT_ZHIPU_MODEL.to_string()
+            } else {
+                r.model.clone()
+            }
+        })
         .unwrap_or_else(|| DEFAULT_ZHIPU_MODEL.to_string());
 
     Ok(ProviderConfig {
@@ -134,8 +143,16 @@ async fn get_enabled_providers(db: &sqlx::SqlitePool) -> Result<Vec<ProviderConf
         let model = if row.model.is_empty() {
             match row.provider_name.as_str() {
                 "zhipu" => DEFAULT_ZHIPU_MODEL.to_string(),
-                "openai" => providers::OPENAI_MODELS.first().map(|m| m.id).unwrap_or("gpt-4o-mini").to_string(),
-                "claude" => providers::CLAUDE_MODELS.first().map(|m| m.id).unwrap_or("claude-3-5-haiku-latest").to_string(),
+                "openai" => providers::OPENAI_MODELS
+                    .first()
+                    .map(|m| m.id)
+                    .unwrap_or("gpt-4o-mini")
+                    .to_string(),
+                "claude" => providers::CLAUDE_MODELS
+                    .first()
+                    .map(|m| m.id)
+                    .unwrap_or("claude-3-5-haiku-latest")
+                    .to_string(),
                 "ollama" => "llama3.2".to_string(),
                 _ => String::new(),
             }
@@ -173,7 +190,8 @@ async fn detect_and_plan(
 
     // Simple normalization of detected_lang (take the first two characters, convert to lowercase)
     let normalized_detected = detected_lang.to_lowercase();
-    let is_primary = normalized_detected.starts_with(&primary_target.to_lowercase()[..2.min(primary_target.len())]);
+    let is_primary = normalized_detected
+        .starts_with(&primary_target.to_lowercase()[..2.min(primary_target.len())]);
 
     let target_lang = if is_primary {
         secondary_target.to_string()
@@ -267,15 +285,16 @@ pub async fn translate_multi(
 
     // 1. Language detection (only Zhipu)
     let detector_config = zhipu_detector_config(&state.db).await?;
-    let (detected_lang, target_lang) = match detect_and_plan(&detector_config, &text, &primaryTarget, &secondaryTarget).await {
-        Ok(res) => res,
-        Err(e) => {
-            if let Ok(mut loading) = state.main_loading.lock() {
-                *loading = false;
+    let (detected_lang, target_lang) =
+        match detect_and_plan(&detector_config, &text, &primaryTarget, &secondaryTarget).await {
+            Ok(res) => res,
+            Err(e) => {
+                if let Ok(mut loading) = state.main_loading.lock() {
+                    *loading = false;
+                }
+                return Err(format!("语言检测失败: {}", e));
             }
-            return Err(format!("语言检测失败: {}", e));
-        }
-    };
+        };
 
     let request = TranslationRequest {
         text: text.clone(),
@@ -293,9 +312,7 @@ pub async fn translate_multi(
 
         let config_clone = config.clone();
         let request_clone = request.clone();
-        let future = async move {
-            translate_with_provider(&config_clone, &request_clone).await
-        };
+        let future = async move { translate_with_provider(&config_clone, &request_clone).await };
 
         abortable_futures.push(Abortable::new(future, abort_registration));
     }
@@ -337,7 +354,7 @@ pub async fn translate_multi(
                 provider_result.detected_source_lang = detected_lang.clone();
                 provider_result.target_lang = target_lang.clone();
                 results.push(provider_result);
-            },
+            }
             Err(Aborted) => {
                 // Request was cancelled
                 results.push(ProviderTranslationResult {
@@ -421,15 +438,16 @@ pub async fn translate_text(
 
     // 1. 语言检测（智谱）
     let detector_config = zhipu_detector_config(&state.db).await?;
-    let (detected_lang, target_lang) = match detect_and_plan(&detector_config, &text, &primaryTarget, &secondaryTarget).await {
-        Ok(res) => res,
-        Err(e) => {
-            if let Ok(mut loading) = state.main_loading.lock() {
-                *loading = false;
+    let (detected_lang, target_lang) =
+        match detect_and_plan(&detector_config, &text, &primaryTarget, &secondaryTarget).await {
+            Ok(res) => res,
+            Err(e) => {
+                if let Ok(mut loading) = state.main_loading.lock() {
+                    *loading = false;
+                }
+                return Err(format!("语言检测失败: {}", e));
             }
-            return Err(format!("语言检测失败: {}", e));
-        }
-    };
+        };
 
     let request = TranslationRequest {
         text: text.clone(),
@@ -507,9 +525,7 @@ pub async fn cancel_translation(
 
 /// 取消所有进行中的翻译请求
 #[tauri::command]
-pub async fn cancel_all_translations(
-    state: State<'_, AppState>,
-) -> Result<u32, String> {
+pub async fn cancel_all_translations(state: State<'_, AppState>) -> Result<u32, String> {
     let mut count = 0u32;
 
     // 标记现有请求为已取消（即便无法真正中断上游 HTTP）
@@ -573,12 +589,17 @@ async fn translate_stream_with_provider(
                 provider.translate_stream(&request_clone, tx, req_id).await
             }
             _ => {
-                let _ = tx.send(StreamEvent::Error {
-                    provider: config_clone.provider_name.clone(),
-                    error: format!("未知服务商: {}", config_clone.provider_name),
-                    request_id: req_id, // Pass req_id here
-                }).await;
-                Err(crate::services::ai::AIError::Other(format!("未知服务商: {}", config_clone.provider_name)))
+                let _ = tx
+                    .send(StreamEvent::Error {
+                        provider: config_clone.provider_name.clone(),
+                        error: format!("未知服务商: {}", config_clone.provider_name),
+                        request_id: req_id, // Pass req_id here
+                    })
+                    .await;
+                Err(crate::services::ai::AIError::Other(format!(
+                    "未知服务商: {}",
+                    config_clone.provider_name
+                )))
             }
         }
     });
@@ -594,7 +615,11 @@ async fn translate_stream_with_provider(
 
         // Normalize provider/model to backend ID to keep frontend keys consistent
         match &mut event {
-            StreamEvent::Start { provider, model: evt_model, .. } => {
+            StreamEvent::Start {
+                provider,
+                model: evt_model,
+                ..
+            } => {
                 *provider = provider_name.clone();
                 if evt_model.is_empty() {
                     *evt_model = model.clone();
@@ -603,7 +628,11 @@ async fn translate_stream_with_provider(
             StreamEvent::Chunk { provider, .. } => {
                 *provider = provider_name.clone();
             }
-            StreamEvent::Done { provider, model: evt_model, .. } => {
+            StreamEvent::Done {
+                provider,
+                model: evt_model,
+                ..
+            } => {
                 *provider = provider_name.clone();
                 if evt_model.is_empty() {
                     *evt_model = model.clone();
@@ -619,7 +648,14 @@ async fn translate_stream_with_provider(
 
         // Process completion and error events
         match &event {
-            StreamEvent::Done { provider, model, detected_source_lang, target_lang, full_translation, request_id: event_req_id } => {
+            StreamEvent::Done {
+                provider,
+                model,
+                detected_source_lang,
+                target_lang,
+                full_translation,
+                request_id: event_req_id,
+            } => {
                 // Only process if the event belongs to the current request (req_id)
                 if *event_req_id == req_id {
                     final_result = Some(ProviderTranslationResult {
@@ -633,7 +669,11 @@ async fn translate_stream_with_provider(
                     });
                 }
             }
-            StreamEvent::Error { provider, error, request_id: event_req_id } => {
+            StreamEvent::Error {
+                provider,
+                error,
+                request_id: event_req_id,
+            } => {
                 // Only process if the event belongs to the current request (req_id)
                 if *event_req_id == req_id {
                     final_result = Some(ProviderTranslationResult {
@@ -717,20 +757,22 @@ async fn _translate_multi_stream_parallel(
         *loading = true;
     }
 
-    let detector_config = providers.iter()
+    let detector_config = providers
+        .iter()
         .find(|p| p.provider_name == "zhipu")
         .or_else(|| providers.first())
         .ok_or("无可用服务商")?;
 
-    let (detected_lang, target_lang) = match detect_and_plan(detector_config, &text, &primary_target, &secondary_target).await {
-        Ok(res) => res,
-        Err(e) => {
-            if let Ok(mut loading) = state.main_loading.lock() {
-                *loading = false;
+    let (detected_lang, target_lang) =
+        match detect_and_plan(detector_config, &text, &primary_target, &secondary_target).await {
+            Ok(res) => res,
+            Err(e) => {
+                if let Ok(mut loading) = state.main_loading.lock() {
+                    *loading = false;
+                }
+                return Err(format!("语言检测失败: {}", e));
             }
-            return Err(format!("语言检测失败: {}", e));
-        }
-    };
+        };
 
     let request = TranslationRequest {
         text: text.clone(),
@@ -746,7 +788,8 @@ async fn _translate_multi_stream_parallel(
         let req_id_clone = req_id;
 
         futures.push(async move {
-            translate_stream_with_provider(&app_clone, &config_clone, &request_clone, req_id_clone).await
+            translate_stream_with_provider(&app_clone, &config_clone, &request_clone, req_id_clone)
+                .await
         });
     }
 
@@ -762,10 +805,11 @@ async fn _translate_multi_stream_parallel(
         res.target_lang = target_lang.clone();
         final_results.push(res);
     }
-    
-    Ok(MultiProviderResult { results: final_results })
-}
 
+    Ok(MultiProviderResult {
+        results: final_results,
+    })
+}
 
 /// 多服务商并行流式翻译（通过事件流式更新前端）
 #[tauri::command]
@@ -790,7 +834,8 @@ pub async fn translate_multi_stream_individual(
     }
 
     // Filter providers based on the requested names
-    let selected_providers: Vec<ProviderConfig> = all_enabled_providers.into_iter()
+    let selected_providers: Vec<ProviderConfig> = all_enabled_providers
+        .into_iter()
         .filter(|p| providers.contains(&p.provider_name))
         .collect();
 
@@ -801,12 +846,13 @@ pub async fn translate_multi_stream_individual(
     // 1. Language detection (Zhipu only)
     let detector_config = zhipu_detector_config(&state.db).await?;
 
-    let (detected_lang, target_lang) = match detect_and_plan(&detector_config, &text, &primaryTarget, &secondaryTarget).await {
-        Ok(res) => res,
-        Err(e) => {
-            return Err(format!("语言检测失败: {}", e));
-        }
-    };
+    let (detected_lang, target_lang) =
+        match detect_and_plan(&detector_config, &text, &primaryTarget, &secondaryTarget).await {
+            Ok(res) => res,
+            Err(e) => {
+                return Err(format!("语言检测失败: {}", e));
+            }
+        };
 
     let base_request = TranslationRequest {
         text: text.clone(),
@@ -831,9 +877,15 @@ pub async fn translate_multi_stream_individual(
 
         let join_handle = tokio::spawn(async move {
             let _ = Abortable::new(
-                translate_stream_with_provider(&app_clone, &config_clone, &request_clone, req_id_clone),
-                abort_registration
-            ).await;
+                translate_stream_with_provider(
+                    &app_clone,
+                    &config_clone,
+                    &request_clone,
+                    req_id_clone,
+                ),
+                abort_registration,
+            )
+            .await;
         });
 
         join_handles.push(join_handle);
@@ -843,7 +895,7 @@ pub async fn translate_multi_stream_individual(
     {
         if let Ok(mut handles) = state.main_abort_handles.lock() {
             // Remove any previous handles for this request ID
-            handles.remove(&requestId); 
+            handles.remove(&requestId);
             // Store new handles
             handles.insert(requestId, abort_handles_for_request.into());
         }

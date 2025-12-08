@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::time::{Duration, Instant};
 
-use super::provider::{AIError, AIProvider, ApiTestResponse, ProviderConfig, TranslationRequest, TranslationResponse, StreamEvent, StreamSender};
+use super::provider::{
+    AIError, AIProvider, ApiTestResponse, ProviderConfig, StreamEvent, StreamSender,
+    TranslationRequest, TranslationResponse,
+};
 use crate::config::{prompts, providers};
 
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
@@ -97,7 +100,8 @@ impl AIProvider for ClaudeProvider {
             ]
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(API_URL)
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", API_VERSION)
@@ -108,14 +112,18 @@ impl AIProvider for ClaudeProvider {
             .map_err(|e| AIError::RequestFailed(e.to_string()))?;
 
         if !response.status().is_success() {
-            return Err(AIError::RequestFailed(format!("HTTP {}", response.status())));
+            return Err(AIError::RequestFailed(format!(
+                "HTTP {}",
+                response.status()
+            )));
         }
 
         let resp_text = response.text().await.unwrap_or_default();
-        let claude_response: ClaudeResponse = serde_json::from_str(&resp_text)
-            .map_err(|e| AIError::ParseError(e.to_string()))?;
+        let claude_response: ClaudeResponse =
+            serde_json::from_str(&resp_text).map_err(|e| AIError::ParseError(e.to_string()))?;
 
-        let content: String = claude_response.content
+        let content: String = claude_response
+            .content
             .iter()
             .filter(|b| b.content_type == "text")
             .filter_map(|b| b.text.as_ref())
@@ -125,11 +133,16 @@ impl AIProvider for ClaudeProvider {
 
         let lang = content.trim().to_string();
         let lang = lang.split_whitespace().last().unwrap_or(&lang).to_string();
-        let lang = lang.trim_matches(|c: char| !c.is_alphanumeric() && c != '-').to_string();
+        let lang = lang
+            .trim_matches(|c: char| !c.is_alphanumeric() && c != '-')
+            .to_string();
         Ok(lang)
     }
 
-    async fn translate(&self, request: &TranslationRequest) -> Result<TranslationResponse, AIError> {
+    async fn translate(
+        &self,
+        request: &TranslationRequest,
+    ) -> Result<TranslationResponse, AIError> {
         if self.api_key.is_empty() {
             return Err(AIError::InvalidApiKey("Claude API Key 未设置".to_string()));
         }
@@ -146,7 +159,8 @@ impl AIProvider for ClaudeProvider {
             ]
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(API_URL)
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", API_VERSION)
@@ -160,14 +174,18 @@ impl AIProvider for ClaudeProvider {
         let resp_text = response.text().await.unwrap_or_default();
 
         if !status.is_success() {
-            return Err(AIError::RequestFailed(format!("HTTP {}: {}", status, resp_text)));
+            return Err(AIError::RequestFailed(format!(
+                "HTTP {}: {}",
+                status, resp_text
+            )));
         }
 
-        let claude_response: ClaudeResponse = serde_json::from_str(&resp_text)
-            .map_err(|e| AIError::ParseError(e.to_string()))?;
+        let claude_response: ClaudeResponse =
+            serde_json::from_str(&resp_text).map_err(|e| AIError::ParseError(e.to_string()))?;
 
         // 提取文本内容
-        let content: String = claude_response.content
+        let content: String = claude_response
+            .content
             .iter()
             .filter(|b| b.content_type == "text")
             .filter_map(|b| b.text.as_ref())
@@ -209,7 +227,8 @@ impl AIProvider for ClaudeProvider {
         });
 
         let start = Instant::now();
-        let result = self.client
+        let result = self
+            .client
             .post(API_URL)
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", API_VERSION)
@@ -257,20 +276,24 @@ impl AIProvider for ClaudeProvider {
         request_id: u64,
     ) -> Result<(), AIError> {
         if self.api_key.is_empty() {
-            let _ = sender.send(StreamEvent::Error {
-                provider: self.name().to_string(),
-                error: "Claude API Key 未设置".to_string(),
-                request_id,
-            }).await;
+            let _ = sender
+                .send(StreamEvent::Error {
+                    provider: self.name().to_string(),
+                    error: "Claude API Key 未设置".to_string(),
+                    request_id,
+                })
+                .await;
             return Err(AIError::InvalidApiKey("Claude API Key 未设置".to_string()));
         }
 
         // 发送开始事件
-        let _ = sender.send(StreamEvent::Start {
-            provider: self.name().to_string(),
-            model: self.model.clone(),
-            request_id,
-        }).await;
+        let _ = sender
+            .send(StreamEvent::Start {
+                provider: self.name().to_string(),
+                model: self.model.clone(),
+                request_id,
+            })
+            .await;
 
         let system_prompt = prompts::SYSTEM_PROMPT;
         let user_prompt = self.build_prompt(request);
@@ -285,7 +308,8 @@ impl AIProvider for ClaudeProvider {
             "stream": true
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(API_URL)
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", API_VERSION)
@@ -306,11 +330,13 @@ impl AIProvider for ClaudeProvider {
         if !status.is_success() {
             let resp_text = response.text().await.unwrap_or_default();
             let error_msg = format!("HTTP {}: {}", status, resp_text);
-            let _ = sender.send(StreamEvent::Error {
-                provider: self.name().to_string(),
-                error: error_msg.clone(),
-                request_id,
-            }).await;
+            let _ = sender
+                .send(StreamEvent::Error {
+                    provider: self.name().to_string(),
+                    error: error_msg.clone(),
+                    request_id,
+                })
+                .await;
             return Err(AIError::RequestFailed(error_msg));
         }
 
@@ -339,11 +365,13 @@ impl AIProvider for ClaudeProvider {
                                             .and_then(|t| t.as_str())
                                         {
                                             full_content.push_str(text);
-                                            let _ = sender.send(StreamEvent::Chunk {
-                                                provider: self.name().to_string(),
-                                                content: text.to_string(),
-                                                request_id,
-                                            }).await;
+                                            let _ = sender
+                                                .send(StreamEvent::Chunk {
+                                                    provider: self.name().to_string(),
+                                                    content: text.to_string(),
+                                                    request_id,
+                                                })
+                                                .await;
                                         }
                                     }
                                 }
@@ -352,25 +380,29 @@ impl AIProvider for ClaudeProvider {
                     }
                 }
                 Err(e) => {
-                    let _ = sender.send(StreamEvent::Error {
-                        provider: self.name().to_string(),
-                        error: e.to_string(),
-                        request_id,
-                    }).await;
+                    let _ = sender
+                        .send(StreamEvent::Error {
+                            provider: self.name().to_string(),
+                            error: e.to_string(),
+                            request_id,
+                        })
+                        .await;
                     return Err(AIError::RequestFailed(e.to_string()));
                 }
             }
         }
 
         // 发送完成事件
-        let _ = sender.send(StreamEvent::Done {
-            provider: self.name().to_string(),
-            model: self.model.clone(),
-            detected_source_lang: request.source_lang.clone(),
-            target_lang: request.target_lang.clone(),
-            full_translation: full_content,
-            request_id,
-        }).await;
+        let _ = sender
+            .send(StreamEvent::Done {
+                provider: self.name().to_string(),
+                model: self.model.clone(),
+                detected_source_lang: request.source_lang.clone(),
+                target_lang: request.target_lang.clone(),
+                full_translation: full_content,
+                request_id,
+            })
+            .await;
 
         Ok(())
     }

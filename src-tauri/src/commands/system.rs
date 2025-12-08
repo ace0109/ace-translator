@@ -1,8 +1,8 @@
-use tauri::{AppHandle, Manager, WebviewWindow, Emitter};
-use enigo::Mouse;
+use crate::services::logger::{LogEntry, LOGGER};
 use crate::AppState;
-use crate::services::logger::{LOGGER, LogEntry};
+use enigo::Mouse;
 use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 /// 翻译历史条目
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
@@ -32,7 +32,9 @@ pub fn center_window_on_screen(window: &WebviewWindow) -> Result<(), String> {
         // 垂直方向距离顶部 5%
         let y = monitor_position.y + (monitor_size.height as f64 * 0.05) as i32;
 
-        window.set_position(tauri::PhysicalPosition::new(x, y)).map_err(|e| e.to_string())?;
+        window
+            .set_position(tauri::PhysicalPosition::new(x, y))
+            .map_err(|e| e.to_string())?;
     }
 
     Ok(())
@@ -46,13 +48,19 @@ pub fn center_window_on_active_screen(window: &WebviewWindow) -> Result<(), Stri
     let (cursor_x, cursor_y) = enigo.location().map_err(|e| e.to_string())?;
 
     // 通过 AppHandle 获取所有显示器，兼容多平台 API
-    let monitors = window.app_handle().available_monitors().map_err(|e| e.to_string())?;
+    let monitors = window
+        .app_handle()
+        .available_monitors()
+        .map_err(|e| e.to_string())?;
     let target_monitor = monitors
         .into_iter()
         .find(|m| {
             let pos = m.position();
             let size = m.size();
-            cursor_x >= pos.x && cursor_x < pos.x + size.width as i32 && cursor_y >= pos.y && cursor_y < pos.y + size.height as i32
+            cursor_x >= pos.x
+                && cursor_x < pos.x + size.width as i32
+                && cursor_y >= pos.y
+                && cursor_y < pos.y + size.height as i32
         })
         .or_else(|| window.current_monitor().ok().flatten())
         .or_else(|| window.primary_monitor().ok().flatten())
@@ -136,7 +144,10 @@ pub async fn hide_window(window: tauri::Window) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn set_main_pinned(state: tauri::State<'_, AppState>, pinned: bool) -> Result<(), String> {
+pub async fn set_main_pinned(
+    state: tauri::State<'_, AppState>,
+    pinned: bool,
+) -> Result<(), String> {
     if let Ok(mut guard) = state.main_pinned.lock() {
         *guard = pinned;
     }
@@ -152,7 +163,10 @@ pub async fn get_main_pinned(state: tauri::State<'_, AppState>) -> Result<bool, 
 }
 
 #[tauri::command]
-pub async fn set_main_loading(state: tauri::State<'_, AppState>, loading: bool) -> Result<(), String> {
+pub async fn set_main_loading(
+    state: tauri::State<'_, AppState>,
+    loading: bool,
+) -> Result<(), String> {
     if let Ok(mut guard) = state.main_loading.lock() {
         *guard = loading;
     }
@@ -172,15 +186,21 @@ pub async fn get_main_loading(state: tauri::State<'_, AppState>) -> Result<bool,
 pub async fn resize_main_window(app: AppHandle, height: f64) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
         // 使用 LogicalSize 获取当前大小（逻辑像素）
-        let current_size = window.inner_size().map_err(|e| e.to_string())?.to_logical::<f64>(window.scale_factor().map_err(|e| e.to_string())?);
+        let current_size = window
+            .inner_size()
+            .map_err(|e| e.to_string())?
+            .to_logical::<f64>(window.scale_factor().map_err(|e| e.to_string())?);
 
         // 获取屏幕高度来限制最大高度（70%）
-        let max_height = if let Some(monitor) = window.current_monitor().map_err(|e| e.to_string())? {
-            let monitor_size = monitor.size().to_logical::<f64>(window.scale_factor().map_err(|e| e.to_string())?);
-            monitor_size.height * 0.7
-        } else {
-            800.0 // 默认最大高度
-        };
+        let max_height =
+            if let Some(monitor) = window.current_monitor().map_err(|e| e.to_string())? {
+                let monitor_size = monitor
+                    .size()
+                    .to_logical::<f64>(window.scale_factor().map_err(|e| e.to_string())?);
+                monitor_size.height * 0.7
+            } else {
+                800.0 // 默认最大高度
+            };
 
         // 限制高度在最小值和最大值之间
         let min_height = 200.0;
@@ -188,7 +208,8 @@ pub async fn resize_main_window(app: AppHandle, height: f64) -> Result<(), Strin
 
         // 只有当高度变化超过 1 像素时才调整，避免抖动
         if (current_size.height - final_height).abs() > 1.0 {
-             window.set_size(tauri::LogicalSize::new(current_size.width, final_height))
+            window
+                .set_size(tauri::LogicalSize::new(current_size.width, final_height))
                 .map_err(|e| e.to_string())?;
         }
     }
@@ -197,10 +218,12 @@ pub async fn resize_main_window(app: AppHandle, height: f64) -> Result<(), Strin
 
 #[tauri::command]
 pub async fn cache_stats(state: tauri::State<'_, AppState>) -> Result<(i64, i64), String> {
-    let size: i64 = sqlx::query_scalar("SELECT IFNULL(SUM(LENGTH(translated_text)), 0) FROM translation_history")
-        .fetch_one(&state.db)
-        .await
-        .unwrap_or(0);
+    let size: i64 = sqlx::query_scalar(
+        "SELECT IFNULL(SUM(LENGTH(translated_text)), 0) FROM translation_history",
+    )
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(0);
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM translation_history")
         .fetch_one(&state.db)
         .await
@@ -273,7 +296,10 @@ pub fn get_app_info(state: tauri::State<'_, AppState>) -> AppInfo {
 
 /// 启用开发者模式（连续点击版本号 7 次后调用）
 #[tauri::command]
-pub async fn enable_dev_mode(app: AppHandle, state: tauri::State<'_, AppState>) -> Result<(), String> {
+pub async fn enable_dev_mode(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
     {
         if let Ok(mut guard) = state.dev_mode.lock() {
             if *guard {
@@ -316,7 +342,7 @@ pub async fn get_translation_history(
         FROM translation_history
         ORDER BY created_at DESC
         LIMIT ? OFFSET ?
-        "#
+        "#,
     )
     .bind(limit)
     .bind(offset)

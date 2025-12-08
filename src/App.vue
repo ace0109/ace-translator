@@ -5,7 +5,11 @@ import { isTauriEnv } from './utils/env';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import i18n from './locales';
+import type { Ref } from 'vue';
 import Toaster from './components/common/Toaster.vue';
+
+// Cast locale to Ref for type safety in non-legacy mode
+const locale = i18n.global.locale as unknown as Ref<string>;
 
 const settingsStore = useSettingsStore();
 
@@ -26,7 +30,7 @@ onMounted(async () => {
       settingsStore.setPrimaryTarget(settings.primary_target || 'zh-CN');
       settingsStore.setSecondaryTarget(settings.secondary_target || 'en');
       settingsStore.setLocale(settings.locale || 'zh-CN');
-      i18n.global.locale.value = settings.locale || 'zh-CN';
+      locale.value = settings.locale || 'zh-CN';
 
       // Apply dark mode class to html element
       if ((settings.theme || 'dark') === 'dark') {
@@ -47,7 +51,7 @@ onMounted(async () => {
       settingsStore.setPrimaryTarget(s.primary_target || 'zh-CN');
       settingsStore.setSecondaryTarget(s.secondary_target || 'en');
       settingsStore.setLocale(s.locale || 'zh-CN');
-      i18n.global.locale.value = s.locale || 'zh-CN';
+      locale.value = s.locale || 'zh-CN';
 
       // Sync dark mode class
       if ((s.theme || 'dark') === 'dark') {

@@ -1,6 +1,6 @@
 <template>
   <Card ref="mainContainer"
-    class="relative flex w-full flex-col overflow-hidden rounded-xl border bg-background text-foreground shadow-lg">
+    class="relative flex w-full flex-col overflow-hidden rounded-sm border bg-background text-foreground shadow-lg">
     <CardHeader data-tauri-drag-region
       class="h-10 flex-row items-center justify-between gap-2 space-y-0 border-b bg-card/70 px-3 py-2">
       <CardTitle data-tauri-drag-region class="text-xs font-semibold text-muted-foreground">

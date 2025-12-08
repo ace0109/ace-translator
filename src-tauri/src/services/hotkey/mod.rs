@@ -4,15 +4,15 @@ use std::time::{Duration, Instant};
 use tauri::{Emitter, Manager};
 use tokio::time::sleep;
 
-use crate::{services::clipboard, AppState, app_info, app_error, app_debug};
+use crate::{app_debug, app_error, app_info, services::clipboard, AppState};
 
 // Platform-specific imports
 #[cfg(target_os = "macos")]
 use core_foundation::runloop::{kCFRunLoopCommonModes, CFRunLoop};
 #[cfg(target_os = "macos")]
 use core_graphics::event::{
-    CGEventFlags, CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType,
-    CGKeyCode,
+    CGEventFlags, CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement,
+    CGEventType, CGKeyCode,
 };
 
 #[cfg(any(target_os = "windows", target_os = "linux"))] // rdev supports Windows and Linux
@@ -41,7 +41,10 @@ pub fn check_accessibility_permission() -> bool {
     }
 
     let result = unsafe { AXIsProcessTrusted() };
-    app_info!("检查辅助功能权限: {}", if result { "已授权" } else { "未授权" });
+    app_info!(
+        "检查辅助功能权限: {}",
+        if result { "已授权" } else { "未授权" }
+    );
     result
 }
 
@@ -111,7 +114,14 @@ pub fn prompt_accessibility_permission() -> bool {
         CFRelease(options);
         CFRelease(key);
 
-        app_info!("辅助功能权限请求结果: {}", if result { "已授权" } else { "等待用户授权" });
+        app_info!(
+            "辅助功能权限请求结果: {}",
+            if result {
+                "已授权"
+            } else {
+                "等待用户授权"
+            }
+        );
         result
     }
 }
@@ -121,7 +131,11 @@ async fn handle_alt_space(app: tauri::AppHandle) {
     // 检查是否启用
     {
         let state: tauri::State<AppState> = app.state();
-        let enabled = state.hotkey_alt_space_enabled.lock().map(|g| *g).unwrap_or(true);
+        let enabled = state
+            .hotkey_alt_space_enabled
+            .lock()
+            .map(|g| *g)
+            .unwrap_or(true);
         if !enabled {
             app_debug!("Alt+Space 快捷键已禁用，跳过");
             return;
@@ -156,7 +170,11 @@ async fn handle_double_copy(app: tauri::AppHandle) {
     // 检查是否启用
     {
         let state: tauri::State<AppState> = app.state();
-        let enabled = state.hotkey_double_copy_enabled.lock().map(|g| *g).unwrap_or(true);
+        let enabled = state
+            .hotkey_double_copy_enabled
+            .lock()
+            .map(|g| *g)
+            .unwrap_or(true);
         if !enabled {
             app_debug!("双击复制翻译已禁用，跳过");
             return;
@@ -193,7 +211,8 @@ async fn handle_double_copy(app: tauri::AppHandle) {
                 app_debug!("主窗口状态 - 固定: {}, 加载中: {}", pinned, loading);
 
                 if !pinned && !loading {
-                    if let Err(e) = crate::commands::system::center_window_on_active_screen(&window) {
+                    if let Err(e) = crate::commands::system::center_window_on_active_screen(&window)
+                    {
                         app_error!("窗口居中失败: {}", e);
                         let _ = crate::commands::system::center_window_on_screen(&window);
                     }
@@ -253,11 +272,13 @@ pub fn start_listener(app: tauri::AppHandle) {
                         *count += 1;
                         // 每收到第一个事件时记录，证明回调在工作
                         if *count == 1 {
-                            crate::services::logger::LOGGER.info("收到第一个键盘事件，回调函数正常工作");
+                            crate::services::logger::LOGGER
+                                .info("收到第一个键盘事件，回调函数正常工作");
                         }
                         // 每 100 个事件记录一次
                         if *count % 100 == 0 {
-                            crate::services::logger::LOGGER.info(&format!("已处理 {} 个键盘事件", *count));
+                            crate::services::logger::LOGGER
+                                .info(&format!("已处理 {} 个键盘事件", *count));
                         }
                     }
 
@@ -275,7 +296,8 @@ pub fn start_listener(app: tauri::AppHandle) {
 
                             // Alt/Option + Space 快捷键
                             if key_code == KEY_SPACE && guard.alt_down {
-                                crate::services::logger::LOGGER.info("检测到 Option+Space 快捷键！");
+                                crate::services::logger::LOGGER
+                                    .info("检测到 Option+Space 快捷键！");
                                 let app_clone = app_handle.clone();
                                 tauri::async_runtime::spawn(async move {
                                     handle_alt_space(app_clone).await;
@@ -301,10 +323,12 @@ pub fn start_listener(app: tauri::AppHandle) {
                                     });
 
                                     if !is_double {
-                                        crate::services::logger::LOGGER.info("检测到第一次 Cmd/Ctrl+C");
+                                        crate::services::logger::LOGGER
+                                            .info("检测到第一次 Cmd/Ctrl+C");
                                         guard.last_c_press = Some(now);
                                     } else {
-                                        crate::services::logger::LOGGER.info("检测到双击 Cmd/Ctrl+C！触发悬浮翻译...");
+                                        crate::services::logger::LOGGER
+                                            .info("检测到双击 Cmd/Ctrl+C！触发悬浮翻译...");
                                         guard.last_c_press = None;
 
                                         let app_clone = app_handle.clone();
@@ -313,7 +337,8 @@ pub fn start_listener(app: tauri::AppHandle) {
                                         });
                                     }
                                 } else {
-                                    crate::services::logger::LOGGER.debug("C 键按下但没有修饰键，忽略");
+                                    crate::services::logger::LOGGER
+                                        .debug("C 键按下但没有修饰键，忽略");
                                 }
                             }
                         }
@@ -328,7 +353,10 @@ pub fn start_listener(app: tauri::AppHandle) {
                             guard.alt_down = flags.contains(CGEventFlags::CGEventFlagAlternate);
 
                             // 只在状态变化时记录
-                            if old_meta != guard.meta_down || old_ctrl != guard.ctrl_down || old_alt != guard.alt_down {
+                            if old_meta != guard.meta_down
+                                || old_ctrl != guard.ctrl_down
+                                || old_alt != guard.alt_down
+                            {
                                 crate::services::logger::LOGGER.debug(&format!(
                                     "修饰键状态变化: meta={}, ctrl={}, alt={}",
                                     guard.meta_down, guard.ctrl_down, guard.alt_down
