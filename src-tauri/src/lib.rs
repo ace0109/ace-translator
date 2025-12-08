@@ -1,4 +1,4 @@
-use tauri::{Manager, WindowEvent};
+use tauri::{Manager, WindowEvent, RunEvent};
 
 mod commands;
 mod services;
@@ -25,7 +25,7 @@ pub fn run() {
     // 初始化日志
     crate::app_info!("应用启动中...");
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             // Focus existing instance instead of spawning another when launched again (e.g. from a shortcut)
             if let Some(window) = app.get_webview_window("main") {
@@ -236,7 +236,23 @@ pub fn run() {
             commands::system::clear_logs,
             commands::system::get_translation_history,
             commands::system::delete_history_entry,
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        ]);
+
+    let app = builder
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|app_handle, event| {
+        match event {
+            #[cfg(target_os = "macos")]
+            RunEvent::Reopen { .. } => {
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = commands::system::center_window_on_screen(&window);
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+            _ => {}
+        }
+    });
 }
