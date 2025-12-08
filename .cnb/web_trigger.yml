@@ -1,8 +1,5 @@
-# .cnb/web_trigger.yml
 branch:
-  # 如下按钮在分支名以 release 开头的分支详情页面显示
-  - reg: "^main"
-    buttons:
+  - buttons:
       - name: 发布文档
         # 如存在，则将作为流水线 title，否则流水线使用默认 title；可支持环境变量替换（仅支持替换一级，环境变量指的是当前配置的 env 和 inputs。仅支持 ${xxx} 写法。）
         description: 构建发布vitepress文档
