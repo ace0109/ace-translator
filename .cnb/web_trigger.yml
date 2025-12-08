@@ -4,6 +4,6 @@ branch:
         # 如存在，则将作为流水线 title，否则流水线使用默认 title；可支持环境变量替换（仅支持替换一级，环境变量指的是当前配置的 env 和 inputs。仅支持 ${xxx} 写法。）
         description: 构建发布vitepress文档
         # 触发的 CI 事件名，需要在 .cnb.yml 中配置
-        event: build_and_deploy_docs
+        event: web_trigger_deploy_docs
         # 是否默认按钮
         isDefault: true

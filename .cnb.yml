@@ -1,5 +1,5 @@
-main*:
-  build_and_deploy_docs:
+main:
+  web_trigger_deploy_docs:
     - docker:
         image: node:22
         #volumes缓存：https://docs.cnb.cool/grammar/pipeline.html#volumes
