@@ -1,10 +1,10 @@
 use tauri::{Manager, WindowEvent};
 
 mod commands;
-mod services;
-mod models;
-mod utils;
 mod config;
+mod models;
+mod services;
+mod utils;
 
 // 导出宏供其他模块使用
 pub use services::logger;
@@ -13,7 +13,14 @@ pub struct AppState {
     pub db: sqlx::SqlitePool,
     pub main_pinned: std::sync::Arc<std::sync::Mutex<bool>>,
     pub main_loading: std::sync::Arc<std::sync::Mutex<bool>>,
-    pub main_abort_handles: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<u64, std::collections::HashMap<String, futures::future::AbortHandle>>>>,
+    pub main_abort_handles: std::sync::Arc<
+        std::sync::Mutex<
+            std::collections::HashMap<
+                u64,
+                std::collections::HashMap<String, futures::future::AbortHandle>,
+            >,
+        >,
+    >,
     pub cancelled_requests: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<u64>>>,
     pub locale: std::sync::Arc<std::sync::Mutex<String>>,
     pub dev_mode: std::sync::Arc<std::sync::Mutex<bool>>,
@@ -28,6 +35,7 @@ pub fn run() {
     crate::app_info!("应用启动中...");
 
     let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             // Focus existing instance instead of spawning another when launched again (e.g. from a shortcut)
             if let Some(window) = app.get_webview_window("main") {
@@ -65,8 +73,12 @@ pub fn run() {
                     db: pool.clone(),
                     main_pinned: std::sync::Arc::new(std::sync::Mutex::new(false)),
                     main_loading: std::sync::Arc::new(std::sync::Mutex::new(false)),
-                    main_abort_handles: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-                    cancelled_requests: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
+                    main_abort_handles: std::sync::Arc::new(std::sync::Mutex::new(
+                        std::collections::HashMap::new(),
+                    )),
+                    cancelled_requests: std::sync::Arc::new(std::sync::Mutex::new(
+                        std::collections::HashSet::new(),
+                    )),
                     locale: std::sync::Arc::new(std::sync::Mutex::new("zh-CN".to_string())),
                     dev_mode: std::sync::Arc::new(std::sync::Mutex::new(false)),
                     tray_icon: std::sync::Arc::new(std::sync::Mutex::new(None)),
@@ -75,22 +87,27 @@ pub fn run() {
                 });
 
                 // Load hotkey config from DB
-                let double_copy: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = 'hotkey_double_copy'")
-                    .fetch_optional(&pool)
-                    .await
-                    .unwrap_or(None);
-                let alt_space: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = 'hotkey_alt_space'")
-                    .fetch_optional(&pool)
-                    .await
-                    .unwrap_or(None);
-                let locale_val: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = 'locale'")
-                    .fetch_optional(&pool)
-                    .await
-                    .unwrap_or(None);
-                let dev_mode_val: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = 'dev_mode'")
-                    .fetch_optional(&pool)
-                    .await
-                    .unwrap_or(None);
+                let double_copy: Option<String> = sqlx::query_scalar(
+                    "SELECT value FROM settings WHERE key = 'hotkey_double_copy'",
+                )
+                .fetch_optional(&pool)
+                .await
+                .unwrap_or(None);
+                let alt_space: Option<String> =
+                    sqlx::query_scalar("SELECT value FROM settings WHERE key = 'hotkey_alt_space'")
+                        .fetch_optional(&pool)
+                        .await
+                        .unwrap_or(None);
+                let locale_val: Option<String> =
+                    sqlx::query_scalar("SELECT value FROM settings WHERE key = 'locale'")
+                        .fetch_optional(&pool)
+                        .await
+                        .unwrap_or(None);
+                let dev_mode_val: Option<String> =
+                    sqlx::query_scalar("SELECT value FROM settings WHERE key = 'dev_mode'")
+                        .fetch_optional(&pool)
+                        .await
+                        .unwrap_or(None);
 
                 if let Some(state) = handle.try_state::<AppState>() {
                     if let Some(val) = double_copy {
@@ -212,7 +229,12 @@ pub fn run() {
         .on_window_event(|window, event| match event {
             WindowEvent::CloseRequested { api, .. } => {
                 // 所有窗口关闭时只隐藏不退出
-                if window.label() == "main" || window.label() == "settings" || window.label() == "history" || window.label() == "logs" || window.label() == "about" {
+                if window.label() == "main"
+                    || window.label() == "settings"
+                    || window.label() == "history"
+                    || window.label() == "logs"
+                    || window.label() == "about"
+                {
                     window.hide().unwrap();
                     api.prevent_close();
                 }

@@ -10,8 +10,8 @@ pub fn ensure_window_on_current_space(window: &tauri::WebviewWindow) {
             Ok(ns_window_ptr) => unsafe {
                 let ns_window: id = ns_window_ptr as id;
                 let current = ns_window.collectionBehavior();
-                let desired =
-                    current | NSWindowCollectionBehavior::NSWindowCollectionBehaviorMoveToActiveSpace;
+                let desired = current
+                    | NSWindowCollectionBehavior::NSWindowCollectionBehaviorMoveToActiveSpace;
 
                 // 仅在需要时更新，避免重复调用。
                 if current != desired {

@@ -44,7 +44,7 @@ pub async fn initialize_db(app: &AppHandle) -> Result<SqlitePool, String> {
             model TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
-        "#
+        "#,
     )
     .execute(&pool)
     .await
@@ -56,12 +56,11 @@ pub async fn initialize_db(app: &AppHandle) -> Result<SqlitePool, String> {
         name: String,
     }
 
-    let columns: Vec<ColumnInfo> = sqlx::query_as(
-        "SELECT name FROM pragma_table_info('translation_history')"
-    )
-        .fetch_all(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let columns: Vec<ColumnInfo> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('translation_history')")
+            .fetch_all(&pool)
+            .await
+            .map_err(|e| e.to_string())?;
 
     let column_names: Vec<&str> = columns.iter().map(|c| c.name.as_str()).collect();
 
@@ -86,7 +85,7 @@ pub async fn initialize_db(app: &AppHandle) -> Result<SqlitePool, String> {
             value TEXT NOT NULL,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
-        "#
+        "#,
     )
     .execute(&pool)
     .await
@@ -103,7 +102,7 @@ pub async fn initialize_db(app: &AppHandle) -> Result<SqlitePool, String> {
             base_url TEXT,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
-        "#
+        "#,
     )
     .execute(&pool)
     .await

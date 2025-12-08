@@ -3,8 +3,8 @@ use std::time::Duration;
 use reqwest::Client;
 use serde::Deserialize;
 
-use crate::{app_debug, app_error};
 use crate::config::providers::ZHIPU_INTERNAL_KEY;
+use crate::{app_debug, app_error};
 
 const ZHIPU_KEY_ENDPOINT: &str = "https://nest.wangcaiyuan.com/ai/translator/api-key";
 static DEFAULT_ZHIPU_KEY: tokio::sync::OnceCell<String> = tokio::sync::OnceCell::const_new();
@@ -37,37 +37,35 @@ pub async fn resolve_default_zhipu_api_key() -> String {
         .unwrap_or_default();
 
     match client.get(ZHIPU_KEY_ENDPOINT).send().await {
-        Ok(resp) if resp.status().is_success() => {
-            match resp.json::<ApiKeyResponse>().await {
-                Ok(parsed) if parsed.code == "00000" => {
-                    if let Some(data) = parsed.data {
-                        if !data.api_key.is_empty() {
-                            app_debug!("使用远程下发的智谱 API Key");
-                            let key = data.api_key;
-                            DEFAULT_ZHIPU_KEY
-                                .get_or_init(|| async { key.clone() })
-                                .await;
-                            return key;
-                        }
+        Ok(resp) if resp.status().is_success() => match resp.json::<ApiKeyResponse>().await {
+            Ok(parsed) if parsed.code == "00000" => {
+                if let Some(data) = parsed.data {
+                    if !data.api_key.is_empty() {
+                        app_debug!("使用远程下发的智谱 API Key");
+                        let key = data.api_key;
+                        DEFAULT_ZHIPU_KEY
+                            .get_or_init(|| async { key.clone() })
+                            .await;
+                        return key;
                     }
-                    app_error!(
-                        "远程智谱 API Key 响应无数据或为空 (code={}, msg={:?})",
-                        parsed.code,
-                        parsed.message
-                    );
                 }
-                Ok(parsed) => {
-                    app_error!(
-                        "远程智谱 API Key 响应 code 非预期: {} msg={:?}",
-                        parsed.code,
-                        parsed.message
-                    );
-                }
-                Err(e) => {
-                    app_error!("解析远程智谱 API Key 失败: {}", e);
-                }
+                app_error!(
+                    "远程智谱 API Key 响应无数据或为空 (code={}, msg={:?})",
+                    parsed.code,
+                    parsed.message
+                );
             }
-        }
+            Ok(parsed) => {
+                app_error!(
+                    "远程智谱 API Key 响应 code 非预期: {} msg={:?}",
+                    parsed.code,
+                    parsed.message
+                );
+            }
+            Err(e) => {
+                app_error!("解析远程智谱 API Key 失败: {}", e);
+            }
+        },
         Ok(resp) => {
             app_error!("远程智谱 API Key 请求失败，HTTP {}", resp.status());
         }
