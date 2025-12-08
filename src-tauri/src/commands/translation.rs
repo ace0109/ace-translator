@@ -114,7 +114,7 @@ async fn get_enabled_providers(db: &sqlx::SqlitePool) -> Result<Vec<ProviderConf
     }
 
     let rows: Vec<DbProviderConfig> = sqlx::query_as(
-        "SELECT provider_name, enabled, api_key, model, base_url FROM provider_configs WHERE enabled = 1 OR provider_name = 'zhipu'"
+        "SELECT provider_name, enabled, api_key, model, base_url FROM provider_configs WHERE provider_name = 'zhipu'"
     )
     .fetch_all(db)
     .await

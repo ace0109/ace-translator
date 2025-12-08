@@ -310,7 +310,8 @@ const loadEnabledProviders = async () => {
   if (!isTauriEnv()) return
   try {
     const allProviders = await invoke<ProviderInfo[]>('get_provider_configs')
-    enabledProviders.value = allProviders
+    const zhipuOnly = allProviders.filter((p) => p.name === 'zhipu')
+    enabledProviders.value = zhipuOnly
       .filter((p) => p.config.enabled)
       .map(applyDefaultModel)
     await nextTick()
@@ -405,7 +406,8 @@ const startTranslation = async (text: string) => {
   let activeProviders: ProviderInfo[] = []
   try {
     const allProviders = await invoke<ProviderInfo[]>('get_provider_configs')
-    activeProviders = allProviders
+    const zhipuOnly = allProviders.filter(p => p.name === 'zhipu')
+    activeProviders = zhipuOnly
       .filter(p => p.config.enabled)
       .map(applyDefaultModel)
     enabledProviders.value = activeProviders

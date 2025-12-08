@@ -106,7 +106,7 @@ pub async fn get_provider_configs(state: State<'_, AppState>) -> Result<Vec<Prov
     }
 
     let rows: Vec<DbProviderConfig> = sqlx::query_as(
-        "SELECT provider_name, enabled, api_key, model, base_url FROM provider_configs ORDER BY provider_name"
+        "SELECT provider_name, enabled, api_key, model, base_url FROM provider_configs WHERE provider_name = 'zhipu' ORDER BY provider_name"
     )
     .fetch_all(&state.db)
     .await
