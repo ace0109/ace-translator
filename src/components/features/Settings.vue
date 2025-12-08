@@ -205,35 +205,6 @@
         </CardContent>
       </Card>
 
-      <!-- 快捷键配置 -->
-      <Card>
-        <CardHeader>
-          <CardTitle>{{ t('settings.hotkey.title') }}</CardTitle>
-          <CardDescription>{{ t('settings.hotkey.description') }}</CardDescription>
-        </CardHeader>
-        <CardContent class="space-y-4">
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-sm font-medium">{{ t('settings.hotkey.doubleCopy') }}</p>
-              <p class="text-xs text-muted-foreground">
-                {{ isMac ? t('settings.hotkey.doubleCopyDescMac') : t('settings.hotkey.doubleCopyDescWin') }}
-              </p>
-            </div>
-            <Switch :checked="hotkeyConfig.double_copy_enabled"
-              @update:checked="(v: boolean) => updateHotkeyConfig('double_copy_enabled', v)" />
-          </div>
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-sm font-medium">{{ t('settings.hotkey.altSpace') }}</p>
-              <p class="text-xs text-muted-foreground">
-                {{ isMac ? t('settings.hotkey.altSpaceDescMac') : t('settings.hotkey.altSpaceDescWin') }}
-              </p>
-            </div>
-            <Switch :checked="hotkeyConfig.alt_space_enabled"
-              @update:checked="(v: boolean) => updateHotkeyConfig('alt_space_enabled', v)" />
-          </div>
-        </CardContent>
-      </Card>
     </div>
   </div>
 </template>
@@ -248,7 +219,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import LanguageSelector from '../common/LanguageSelector.vue'
@@ -292,22 +262,12 @@ interface SettingsForm {
   locale: SupportedLocale
 }
 
-interface HotkeyConfig {
-  double_copy_enabled: boolean
-  alt_space_enabled: boolean
-}
-
 const settingsStore = useSettingsStore()
 const settingsForm = ref<SettingsForm>({
   theme: 'dark',
   primaryTarget: 'zh-CN',
   secondaryTarget: 'en',
   locale: 'zh-CN',
-})
-
-const hotkeyConfig = ref<HotkeyConfig>({
-  double_copy_enabled: true,
-  alt_space_enabled: true,
 })
 
 // 检测是否为 macOS
@@ -459,28 +419,6 @@ const loadSettings = async () => {
   }
 }
 
-const loadHotkeyConfig = async () => {
-  if (!isTauriEnv()) return
-  try {
-    const config = await invoke<HotkeyConfig>('get_hotkey_config')
-    hotkeyConfig.value = config
-  } catch (error: any) {
-    console.error('加载快捷键配置失败:', error)
-  }
-}
-
-const updateHotkeyConfig = async (key: keyof HotkeyConfig, value: boolean) => {
-  hotkeyConfig.value[key] = value
-  if (!isTauriEnv()) return
-  try {
-    await invoke('save_hotkey_config', { config: hotkeyConfig.value })
-    showToast(t('settings.hotkey.configSaved'), 'info')
-  } catch (error: any) {
-    const errMsg = error?.message || String(error)
-    showToast(`${t('settings.saveFailed')}：${errMsg}`, 'error')
-  }
-}
-
 const saveSettings = async () => {
   if (!isTauriEnv()) {
     showToast(t('settings.notInTauri'), 'error')
@@ -531,7 +469,6 @@ const updateTheme = async (theme: 'light' | 'dark') => {
 onMounted(() => {
   loadSettings()
   loadProviderConfigs()
-  loadHotkeyConfig()
 })
 
 watch(
