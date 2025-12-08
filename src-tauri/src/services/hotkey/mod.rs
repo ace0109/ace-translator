@@ -179,7 +179,7 @@ async fn handle_double_copy(app: tauri::AppHandle) {
             if let Some(window) = app.get_webview_window("main") {
                 app_info!("成功获取到主窗口");
 
-                // 若已固定，则不改坐标；未固定时按鼠标居中定位
+                // 未固定时固定显示在屏幕顶部 10% 处居中
                 let pinned = {
                     let state: tauri::State<AppState> = app.state();
                     state.main_pinned.lock().map(|g| *g).unwrap_or(false)
@@ -193,129 +193,8 @@ async fn handle_double_copy(app: tauri::AppHandle) {
                 app_debug!("主窗口状态 - 固定: {}, 加载中: {}", pinned, loading);
 
                 if !pinned && !loading {
-                    // 使用窗口真实外部尺寸（考虑缩放/装饰）进行边界收缩，避免 DPI 与多屏溢出
-                    let outer_size = window
-                        .outer_size()
-                        .unwrap_or(tauri::PhysicalSize::new(400, 500));
-
-                    app_debug!("窗口外部尺寸: {}x{}", outer_size.width, outer_size.height);
-
-                    let position = Mouse::get_mouse_position();
-                    let (mut pos_x, mut pos_y) = (300i32, 200i32);
-                    if let Mouse::Position { x, y } = position {
-                        pos_x = x;
-                        pos_y = y;
-                    }
-                    app_debug!("鼠标位置: ({}, {})", pos_x, pos_y);
-
-                    #[cfg(target_os = "macos")]
-                    {
-                        // macOS logic: mouse_position returns Logical points.
-                        // We must convert window size and monitor bounds to Logical points to match.
-                        let scale_factor = window.scale_factor().unwrap_or(1.0);
-                        app_debug!("缩放因子: {}", scale_factor);
-
-                        let win_w = outer_size.width as f64 / scale_factor;
-                        let win_h = outer_size.height as f64 / scale_factor;
-
-                        let m_x = pos_x as f64;
-                        let m_y = pos_y as f64;
-
-                        // Target center
-                        let mut target_x = m_x - win_w / 2.0;
-                        let mut target_y = m_y - (win_h / 2.0) - 10.0;
-
-                        if let Ok(monitors) = app.available_monitors() {
-                            app_debug!("可用显示器数量: {}", monitors.len());
-                            // Find monitor containing mouse (using Logical bounds)
-                            let monitor = monitors
-                                .iter()
-                                .find(|m| {
-                                    let scale = m.scale_factor();
-                                    let pos = m.position(); // Physical
-                                    let size = m.size(); // Physical
-
-                                    let min_x = pos.x as f64 / scale;
-                                    let min_y = pos.y as f64 / scale;
-                                    let max_x = min_x + (size.width as f64 / scale);
-                                    let max_y = min_y + (size.height as f64 / scale);
-
-                                    m_x >= min_x && m_x <= max_x && m_y >= min_y && m_y <= max_y
-                                })
-                                .or(monitors.first());
-
-                            if let Some(m) = monitor {
-                                let scale = m.scale_factor();
-                                let pos = m.position();
-                                let size = m.size();
-
-                                let min_x = pos.x as f64 / scale;
-                                let min_y = pos.y as f64 / scale;
-                                // Constrain target so window stays within monitor
-                                let max_x = min_x + (size.width as f64 / scale) - win_w;
-                                let max_y = min_y + (size.height as f64 / scale) - win_h;
-
-                                target_x = target_x.clamp(min_x, max_x.max(min_x));
-                                target_y = target_y.clamp(min_y, max_y.max(min_y));
-                            }
-                        }
-
-                        let _ = window.set_position(tauri::Position::Logical(tauri::LogicalPosition {
-                            x: target_x,
-                            y: target_y,
-                        }));
-                        app_info!("设置主窗口位置（逻辑坐标）: ({}, {})", target_x, target_y);
-                    }
-
-                    #[cfg(not(target_os = "macos"))]
-                    {
-                        // Windows/Linux logic: mouse_position returns Physical pixels (usually).
-                        let window_width = outer_size.width as i32;
-                        let window_height = outer_size.height as i32;
-
-                        // 目标：大致居中到鼠标附近
-                        let mut target_x = pos_x - window_width / 2;
-                        let mut target_y = pos_y - (window_height / 2) - 10;
-
-                        if let Ok(monitors) = app.available_monitors() {
-                            // 优先选包含鼠标的显示器进行边界约束
-                            if let Some(mon) = monitors.iter().find(|m| {
-                                let pos = m.position();
-                                let size = m.size();
-                                let x0 = pos.x;
-                                let y0 = pos.y;
-                                let x1 = x0 + size.width as i32;
-                                let y1 = y0 + size.height as i32;
-                                pos_x >= x0 && pos_x <= x1 && pos_y >= y0 && pos_y <= y1
-                            }) {
-                                let pos = mon.position();
-                                let size = mon.size();
-                                let min_x = pos.x;
-                                let min_y = pos.y;
-                                let max_x = pos.x + size.width as i32 - window_width;
-                                let max_y = pos.y + size.height as i32 - window_height;
-                                target_x = target_x.clamp(min_x, std::cmp::max(min_x, max_x));
-                                target_y = target_y.clamp(min_y, std::cmp::max(min_y, max_y));
-                            } else if let Some(primary) = monitors.first() {
-                                // 找不到匹配显示器时，至少落在第一个显示器范围内
-                                let pos = primary.position();
-                                let size = primary.size();
-                                let min_x = pos.x;
-                                let min_y = pos.y;
-                                let max_x = pos.x + size.width as i32 - window_width;
-                                let max_y = pos.y + size.height as i32 - window_height;
-                                target_x = target_x.clamp(min_x, std::cmp::max(min_x, max_x));
-                                target_y = target_y.clamp(min_y, std::cmp::max(min_y, max_y));
-                            }
-                        }
-
-                        let _ = window.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
-                            x: target_x,
-                            y: target_y,
-                        }));
-
-                        app_info!("设置主窗口位置（物理坐标）: ({}, {})", target_x, target_y);
-                    }
+                    let _ = crate::commands::system::center_window_on_screen(&window);
+                    app_info!("主窗口固定显示在当前屏幕顶部 5% 处居中");
                 } else {
                     app_info!("主窗口已固定或加载中，保持当前位置");
                 }
