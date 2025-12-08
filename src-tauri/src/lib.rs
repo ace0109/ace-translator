@@ -1,4 +1,4 @@
-use tauri::{Manager, WindowEvent, RunEvent};
+use tauri::{Manager, WindowEvent};
 
 mod commands;
 mod services;
@@ -286,9 +286,11 @@ pub fn run() {
         .expect("error while building tauri application");
 
     app.run(|app_handle, event| {
+        // 避免非 macOS 平台出现未使用警告
+        let _ = &app_handle;
         match event {
             #[cfg(target_os = "macos")]
-            RunEvent::Reopen { .. } => {
+            tauri::RunEvent::Reopen { .. } => {
                 if let Some(window) = app_handle.get_webview_window("main") {
                     let _ = commands::system::center_window_on_screen(&window);
                     let _ = window.show();

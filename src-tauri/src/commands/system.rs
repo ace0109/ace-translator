@@ -1,4 +1,5 @@
 use tauri::{AppHandle, Manager, WebviewWindow, Emitter};
+use enigo::Mouse;
 use crate::AppState;
 use crate::services::logger::{LOGGER, LogEntry};
 use serde::{Deserialize, Serialize};
@@ -33,6 +34,40 @@ pub fn center_window_on_screen(window: &WebviewWindow) -> Result<(), String> {
 
         window.set_position(tauri::PhysicalPosition::new(x, y)).map_err(|e| e.to_string())?;
     }
+
+    Ok(())
+}
+
+/// 将窗口移动到鼠标所在的屏幕后再居中（找不到时回落到当前/主屏）
+pub fn center_window_on_active_screen(window: &WebviewWindow) -> Result<(), String> {
+    // Enigo 需要 Settings，创建默认配置
+    let settings = enigo::Settings::default();
+    let enigo = enigo::Enigo::new(&settings).map_err(|e| e.to_string())?;
+    let (cursor_x, cursor_y) = enigo.location().map_err(|e| e.to_string())?;
+
+    // 通过 AppHandle 获取所有显示器，兼容多平台 API
+    let monitors = window.app_handle().available_monitors().map_err(|e| e.to_string())?;
+    let target_monitor = monitors
+        .into_iter()
+        .find(|m| {
+            let pos = m.position();
+            let size = m.size();
+            cursor_x >= pos.x && cursor_x < pos.x + size.width as i32 && cursor_y >= pos.y && cursor_y < pos.y + size.height as i32
+        })
+        .or_else(|| window.current_monitor().ok().flatten())
+        .or_else(|| window.primary_monitor().ok().flatten())
+        .ok_or_else(|| "无法获取显示器信息".to_string())?;
+
+    let window_size = window.outer_size().map_err(|e| e.to_string())?;
+    let monitor_size = target_monitor.size();
+    let monitor_position = target_monitor.position();
+
+    let x = monitor_position.x + ((monitor_size.width as i32 - window_size.width as i32) / 2);
+    let y = monitor_position.y + (monitor_size.height as f64 * 0.05) as i32;
+
+    window
+        .set_position(tauri::PhysicalPosition::new(x, y))
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }
