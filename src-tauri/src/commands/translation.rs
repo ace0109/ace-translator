@@ -4,8 +4,9 @@ use crate::services::ai::{
     openai::OpenAIProvider,
     claude::ClaudeProvider,
     ollama::OllamaProvider,
+    key::resolve_default_zhipu_api_key,
 };
-use crate::config::providers;
+use crate::config::providers::{self, DEFAULT_ZHIPU_MODEL};
 use crate::services::encryption::decrypt_api_key;
 use crate::AppState;
 use futures::future::{join_all, Abortable, AbortHandle, Aborted};
@@ -41,6 +42,67 @@ pub struct TranslationResult {
     pub translation: String,
 }
 
+/// 取消标记：仅用于停止事件推送，不会真正中断上游 HTTP 请求。
+fn mark_cancelled_request(state: &State<'_, AppState>, req_id: u64) {
+    if let Ok(mut cancelled) = state.cancelled_requests.lock() {
+        cancelled.insert(req_id);
+    }
+}
+
+fn clear_cancelled_request(state: &State<'_, AppState>, req_id: u64) {
+    if let Ok(mut cancelled) = state.cancelled_requests.lock() {
+        cancelled.remove(&req_id);
+    }
+}
+
+fn is_request_cancelled(app: &AppHandle, req_id: u64) -> bool {
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(cancelled) = state.cancelled_requests.lock() {
+            return cancelled.contains(&req_id);
+        }
+    }
+    false
+}
+
+/// 确保语言检测始终使用智谱，模型默认 glm-4-flash，API Key 远程拉取失败则使用内置。
+async fn zhipu_detector_config(db: &sqlx::SqlitePool) -> Result<ProviderConfig, String> {
+    #[derive(sqlx::FromRow)]
+    struct ZhipuRow {
+        api_key: String,
+        model: String,
+        base_url: Option<String>,
+    }
+
+    let row: Option<ZhipuRow> = sqlx::query_as(
+        "SELECT api_key, model, base_url FROM provider_configs WHERE provider_name = 'zhipu' LIMIT 1",
+    )
+    .fetch_optional(db)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut api_key = row
+        .as_ref()
+        .and_then(|r| if r.api_key.is_empty() { None } else { Some(decrypt_api_key(&r.api_key).unwrap_or_default()) })
+        .unwrap_or_default();
+
+    if api_key.is_empty() {
+        api_key = resolve_default_zhipu_api_key().await;
+    }
+
+    let model = row
+        .as_ref()
+        .map(|r| if r.model.is_empty() { DEFAULT_ZHIPU_MODEL.to_string() } else { r.model.clone() })
+        .unwrap_or_else(|| DEFAULT_ZHIPU_MODEL.to_string());
+
+    Ok(ProviderConfig {
+        provider_name: "zhipu".to_string(),
+        enabled: true,
+        api_key,
+        model,
+        base_url: row.and_then(|r| r.base_url),
+    })
+}
+
 /// 从数据库获取已启用的服务商配置
 async fn get_enabled_providers(db: &sqlx::SqlitePool) -> Result<Vec<ProviderConfig>, String> {
     #[derive(sqlx::FromRow)]
@@ -53,7 +115,7 @@ async fn get_enabled_providers(db: &sqlx::SqlitePool) -> Result<Vec<ProviderConf
     }
 
     let rows: Vec<DbProviderConfig> = sqlx::query_as(
-        "SELECT provider_name, enabled, api_key, model, base_url FROM provider_configs WHERE enabled = 1"
+        "SELECT provider_name, enabled, api_key, model, base_url FROM provider_configs WHERE enabled = 1 OR provider_name = 'zhipu'"
     )
     .fetch_all(db)
     .await
@@ -63,6 +125,8 @@ async fn get_enabled_providers(db: &sqlx::SqlitePool) -> Result<Vec<ProviderConf
     for row in rows {
         let api_key = if !row.api_key.is_empty() {
             decrypt_api_key(&row.api_key).unwrap_or_default()
+        } else if row.provider_name == "zhipu" {
+            resolve_default_zhipu_api_key().await
         } else {
             String::new()
         };
@@ -70,7 +134,7 @@ async fn get_enabled_providers(db: &sqlx::SqlitePool) -> Result<Vec<ProviderConf
         // Fallback to a sane default model if DB value is empty
         let model = if row.model.is_empty() {
             match row.provider_name.as_str() {
-                "zhipu" => providers::ZHIPU_MODELS.first().map(|m| m.id).unwrap_or("glm-4-flashx").to_string(),
+                "zhipu" => DEFAULT_ZHIPU_MODEL.to_string(),
                 "openai" => providers::OPENAI_MODELS.first().map(|m| m.id).unwrap_or("gpt-4o-mini").to_string(),
                 "claude" => providers::CLAUDE_MODELS.first().map(|m| m.id).unwrap_or("claude-3-5-haiku-latest").to_string(),
                 "ollama" => "llama3.2".to_string(),
@@ -82,7 +146,7 @@ async fn get_enabled_providers(db: &sqlx::SqlitePool) -> Result<Vec<ProviderConf
 
         configs.push(ProviderConfig {
             provider_name: row.provider_name,
-            enabled: row.enabled != 0,
+            enabled: true, // 智谱强制启用，其余因查询条件已过滤
             api_key,
             model,
             base_url: row.base_url,
@@ -99,14 +163,14 @@ async fn detect_and_plan(
     primary_target: &str,
     secondary_target: &str,
 ) -> Result<(String, String), String> {
-    // Use the specified provider to detect language
+    // 语言检测强制只使用智谱
     let detected_lang = match config.provider_name.as_str() {
         "zhipu" => ZhipuProvider::new(config).detect_language(text).await,
-        "openai" => OpenAIProvider::new(config).detect_language(text).await,
-        "claude" => ClaudeProvider::new(config).detect_language(text).await,
-        "ollama" => OllamaProvider::new(config).detect_language(text).await,
-        _ => Err(crate::services::ai::AIError::Other(format!("Unknown provider: {}", config.provider_name))),
-    }.map_err(|e| e.to_string())?;
+        _ => Err(crate::services::ai::AIError::Other(
+            "语言检测仅支持智谱 AI".to_string(),
+        )),
+    }
+    .map_err(|e| e.to_string())?;
 
     // Simple normalization of detected_lang (take the first two characters, convert to lowercase)
     let normalized_detected = detected_lang.to_lowercase();
@@ -189,6 +253,7 @@ pub async fn translate_multi(
             .unwrap_or_default()
             .as_millis() as u64
     });
+    clear_cancelled_request(&state, req_id);
 
     // Get enabled providers
     let providers = get_enabled_providers(&state.db).await?;
@@ -201,14 +266,9 @@ pub async fn translate_multi(
         *loading = true;
     }
 
-    // 1. Language detection
-    // Prioritize Zhipu AI for detection (usually fast and free)
-    let detector_config = providers.iter()
-        .find(|p| p.provider_name == "zhipu")
-        .or_else(|| providers.first())
-        .ok_or("无可用服务商")?;
-
-    let (detected_lang, target_lang) = match detect_and_plan(detector_config, &text, &primaryTarget, &secondaryTarget).await {
+    // 1. Language detection (only Zhipu)
+    let detector_config = zhipu_detector_config(&state.db).await?;
+    let (detected_lang, target_lang) = match detect_and_plan(&detector_config, &text, &primaryTarget, &secondaryTarget).await {
         Ok(res) => res,
         Err(e) => {
             if let Ok(mut loading) = state.main_loading.lock() {
@@ -309,6 +369,10 @@ pub async fn translate_multi(
         .await;
     }
 
+    if let Ok(mut cancelled) = state.cancelled_requests.lock() {
+        cancelled.remove(&req_id);
+    }
+
     Ok(MultiProviderResult { results })
 }
 
@@ -328,6 +392,7 @@ pub async fn translate_text(
             .unwrap_or_default()
             .as_millis() as u64
     });
+    clear_cancelled_request(&state, req_id);
 
     println!(
         "[translate_text] start | req_id={:?} primary={} secondary={} text_len={}",
@@ -355,8 +420,9 @@ pub async fn translate_text(
         *loading = true;
     }
 
-    // 1. 语言检测
-    let (detected_lang, target_lang) = match detect_and_plan(config, &text, &primaryTarget, &secondaryTarget).await {
+    // 1. 语言检测（智谱）
+    let detector_config = zhipu_detector_config(&state.db).await?;
+    let (detected_lang, target_lang) = match detect_and_plan(&detector_config, &text, &primaryTarget, &secondaryTarget).await {
         Ok(res) => res,
         Err(e) => {
             if let Ok(mut loading) = state.main_loading.lock() {
@@ -395,12 +461,19 @@ pub async fn translate_text(
         .execute(&state.db)
         .await;
 
+        if let Ok(mut cancelled) = state.cancelled_requests.lock() {
+            cancelled.remove(&req_id);
+        }
+
         Ok(TranslationResult {
             detected_source_lang: result.detected_source_lang,
             target_lang: result.target_lang,
             translation: result.translation,
         })
     } else {
+        if let Ok(mut cancelled) = state.cancelled_requests.lock() {
+            cancelled.remove(&req_id);
+        }
         Err(result.error.unwrap_or_else(|| "翻译失败".to_string()))
     }
 }
@@ -412,6 +485,8 @@ pub async fn cancel_translation(
     #[allow(non_snake_case)] requestId: u64,
 ) -> Result<bool, String> {
     let mut cancelled_any = false;
+
+    mark_cancelled_request(&state, requestId);
 
     if let Ok(mut handles) = state.main_abort_handles.lock() {
         if let Some(inner_handles) = handles.remove(&requestId) {
@@ -437,6 +512,15 @@ pub async fn cancel_all_translations(
     state: State<'_, AppState>,
 ) -> Result<u32, String> {
     let mut count = 0u32;
+
+    // 标记现有请求为已取消（即便无法真正中断上游 HTTP）
+    if let Ok(handles) = state.main_abort_handles.lock() {
+        if let Ok(mut cancelled) = state.cancelled_requests.lock() {
+            for req_id in handles.keys() {
+                cancelled.insert(*req_id);
+            }
+        }
+    }
 
     if let Ok(mut handles) = state.main_abort_handles.lock() {
         for (_, inner_handles) in handles.drain() {
@@ -504,6 +588,11 @@ async fn translate_stream_with_provider(
     let mut final_result: Option<ProviderTranslationResult> = None;
 
     while let Some(mut event) = rx.recv().await {
+        if is_request_cancelled(app, req_id) {
+            // 如果前端已取消/关闭，跳过后续事件，等待任务自然结束
+            continue;
+        }
+
         // Normalize provider/model to backend ID to keep frontend keys consistent
         match &mut event {
             StreamEvent::Start { provider, model: evt_model, .. } => {
@@ -693,6 +782,7 @@ pub async fn translate_multi_stream_individual(
     if text.trim().is_empty() {
         return Err("Text is empty".to_string());
     }
+    clear_cancelled_request(&state, requestId);
 
     // Get all enabled providers
     let all_enabled_providers = get_enabled_providers(&state.db).await?;
@@ -709,14 +799,10 @@ pub async fn translate_multi_stream_individual(
         return Err("没有找到指定的已启用服务商。".to_string());
     }
 
-    // 1. Language detection
-    // Prioritize Zhipu AI for detection, fallback to the first available selected provider
-    let detector_config = selected_providers.iter()
-        .find(|p| p.provider_name == "zhipu")
-        .or_else(|| selected_providers.first())
-        .ok_or("无可用服务商进行语言检测")?;
+    // 1. Language detection (Zhipu only)
+    let detector_config = zhipu_detector_config(&state.db).await?;
 
-    let (detected_lang, target_lang) = match detect_and_plan(detector_config, &text, &primaryTarget, &secondaryTarget).await {
+    let (detected_lang, target_lang) = match detect_and_plan(&detector_config, &text, &primaryTarget, &secondaryTarget).await {
         Ok(res) => res,
         Err(e) => {
             return Err(format!("语言检测失败: {}", e));
@@ -772,6 +858,9 @@ pub async fn translate_multi_stream_individual(
             if let Some(state) = app_handle.try_state::<AppState>() {
                 if let Ok(mut handles) = state.main_abort_handles.lock() {
                     handles.remove(&requestId);
+                }
+                if let Ok(mut cancelled) = state.cancelled_requests.lock() {
+                    cancelled.remove(&requestId);
                 }
             }
         });

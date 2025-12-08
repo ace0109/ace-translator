@@ -14,6 +14,7 @@ pub struct AppState {
     pub main_pinned: std::sync::Arc<std::sync::Mutex<bool>>,
     pub main_loading: std::sync::Arc<std::sync::Mutex<bool>>,
     pub main_abort_handles: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<u64, std::collections::HashMap<String, futures::future::AbortHandle>>>>,
+    pub cancelled_requests: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<u64>>>,
     pub hotkey_double_copy_enabled: std::sync::Arc<std::sync::Mutex<bool>>,
     pub hotkey_alt_space_enabled: std::sync::Arc<std::sync::Mutex<bool>>,
 }
@@ -62,6 +63,7 @@ pub fn run() {
                     main_pinned: std::sync::Arc::new(std::sync::Mutex::new(false)),
                     main_loading: std::sync::Arc::new(std::sync::Mutex::new(false)),
                     main_abort_handles: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+                    cancelled_requests: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
                     hotkey_double_copy_enabled: std::sync::Arc::new(std::sync::Mutex::new(true)),
                     hotkey_alt_space_enabled: std::sync::Arc::new(std::sync::Mutex::new(true)),
                 });

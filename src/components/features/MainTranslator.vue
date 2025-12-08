@@ -1,42 +1,22 @@
 <template>
-  <Card
-    ref="mainContainer"
-    class="relative flex w-full flex-col overflow-hidden rounded-xl border bg-background text-foreground shadow-lg"
-  >
-    <CardHeader
-      data-tauri-drag-region
-      class="h-10 flex-row items-center justify-between gap-2 space-y-0 border-b bg-card/70 px-3 py-2"
-    >
+  <Card ref="mainContainer"
+    class="relative flex w-full flex-col overflow-hidden rounded-xl border bg-background text-foreground shadow-lg">
+    <CardHeader data-tauri-drag-region
+      class="h-10 flex-row items-center justify-between gap-2 space-y-0 border-b bg-card/70 px-3 py-2">
       <CardTitle data-tauri-drag-region class="text-xs font-semibold text-muted-foreground">
         {{ t('translator.title') }}
       </CardTitle>
       <CardAction class="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          class="h-7 w-7 text-muted-foreground"
-          :class="{ 'text-primary': pinned }"
-          @click="togglePin"
-          :title="pinned ? t('translator.unpinWindow') : t('translator.pinWindow')"
-        >
+        <Button variant="ghost" size="icon" class="h-7 w-7 text-muted-foreground" :class="{ 'text-primary': pinned }"
+          @click="togglePin" :title="pinned ? t('translator.unpinWindow') : t('translator.pinWindow')">
           <component :is="pinned ? PinOff : Pin" class="h-4 w-4" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          class="h-7 w-7 text-muted-foreground"
-          @click="openSettings"
-          :title="t('translator.openSettings')"
-        >
+        <Button variant="ghost" size="icon" class="h-7 w-7 text-muted-foreground" @click="openSettings"
+          :title="t('translator.openSettings')">
           <Settings class="h-4 w-4" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          class="h-7 w-7 text-muted-foreground hover:text-destructive"
-          @click="hideWindow"
-          :title="t('translator.closeWindow')"
-        >
+        <Button variant="ghost" size="icon" class="h-7 w-7 text-muted-foreground hover:text-destructive"
+          @click="hideWindow" :title="t('translator.closeWindow')">
           <X class="h-4 w-4" />
         </Button>
       </CardAction>
@@ -57,33 +37,16 @@
 
       <div class="space-y-2 rounded-lg border bg-card/60 p-3">
         <div class="flex items-center justify-between gap-2">
-          <Label class="text-[11px] uppercase tracking-wide text-muted-foreground">
+          <Label class="text-[14px] uppercase tracking-wide text-muted-foreground">
             {{ t('translator.original') }}
           </Label>
-          <Button
-            v-if="sourcePreview"
-            variant="ghost"
-            size="sm"
-            class="h-7 px-2 text-xs"
-            @click="startTranslation(sourcePreview)"
-          >
-            {{ t('translator.translateBtn') }}
-          </Button>
         </div>
-        <Textarea
-          v-model="sourcePreview"
-          ref="sourceTextarea"
-          :placeholder="t('translator.inputPlaceholder')"
-          class="min-h-[80px] max-h-[20rem] resize-none bg-background/80"
-          @input="autoResizeTextarea"
+        <Textarea v-model="sourcePreview" ref="sourceTextarea" :placeholder="t('translator.inputPlaceholder')"
+          class="min-h-20 max-h-80 resize-none bg-background/80" @input="autoResizeTextarea"
           @keydown.enter.exact.prevent="startTranslation(sourcePreview)"
           @keydown.enter.ctrl.exact.prevent="startTranslation(sourcePreview)"
-          @keydown.enter.meta.exact.prevent="startTranslation(sourcePreview)"
-        />
+          @keydown.enter.meta.exact.prevent="startTranslation(sourcePreview)" />
         <div class="flex justify-end gap-2 pt-1">
-          <Button v-if="streamingLoading" variant="outline" size="sm" @click="cancelCurrent">
-            {{ t('common.cancel') }}
-          </Button>
           <Button size="sm" :disabled="!sourcePreview.trim()" @click="startTranslation(sourcePreview)">
             {{ t('translator.translateBtn') }}
           </Button>
@@ -96,12 +59,9 @@
           <AlertDescription>{{ streamingError }}</AlertDescription>
         </Alert>
 
-        <div v-if="enabledProviders.length === 0 && !streamingLoading" class="py-6 text-center text-sm text-muted-foreground">
-          {{ t('translator.waitingTranslation') }}
-        </div>
-
-        <div v-else class="space-y-2">
-          <Card v-for="provider in enabledProviders" :key="providerKey(provider)" class="overflow-hidden border shadow-sm">
+        <div v-if="enabledProviders.length > 0 || streamingLoading" class="space-y-2">
+          <Card v-for="provider in enabledProviders" :key="providerKey(provider)"
+            class="overflow-hidden border shadow-sm">
             <CardHeader class="flex flex-row items-center justify-between gap-2 border-b bg-muted/30 py-2">
               <div class="flex items-center gap-2">
                 <span class="h-2 w-2 rounded-full" :class="statusDot(provider)" />
@@ -116,14 +76,9 @@
                 <Badge variant="outline" class="text-[10px] font-medium">
                   {{ provider.config.base_url ? 'Custom' : 'Default' }}
                 </Badge>
-                <Button
-                  v-if="getProviderCardState(provider).success && !getProviderCardState(provider).loading"
-                  variant="ghost"
-                  size="sm"
-                  class="h-8 px-2 text-xs"
-                  @click="copyText(getProviderCardState(provider).translation)"
-                  :title="t('common.copy')"
-                >
+                <Button v-if="getProviderCardState(provider).success && !getProviderCardState(provider).loading"
+                  variant="ghost" size="sm" class="h-8 px-2 text-xs"
+                  @click="copyText(getProviderCardState(provider).translation)" :title="t('common.copy')">
                   <Copy class="h-4 w-4" />
                   <span class="ml-1">{{ t('common.copy') }}</span>
                 </Button>
@@ -137,15 +92,14 @@
                 </AlertDescription>
               </Alert>
               <div v-else class="relative rounded-md border border-dashed bg-background/70 p-3">
-                <p class="min-h-[32px] whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/90">
+                <p class="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/90">
+                  <span v-if="getProviderCardState(provider).loading" class="inline-flex align-middle">
+                    <LoadingSpinner />
+                  </span>
                   {{
                     getProviderCardState(provider).translation
-                      || (getProviderCardState(provider).loading ? t('translator.translating') : t('translator.waitingTranslation'))
                   }}
                 </p>
-                <div v-if="getProviderCardState(provider).loading" class="absolute right-2 top-2 flex items-center justify-center">
-                  <LoadingSpinner />
-                </div>
               </div>
             </CardContent>
           </Card>
@@ -290,7 +244,8 @@ const providerCardStates = computed(() => {
     const stream = streamingResults.value.get(key)
     if (stream) {
       map.set(key, {
-        loading: stream.loading,
+        // 只要已有内容就视为不再 loading
+        loading: stream.loading && !stream.content,
         translation: stream.content,
         success: stream.isComplete && !stream.error,
         error: stream.error || null,
@@ -385,7 +340,7 @@ const goToSettings = async () => {
   } finally {
     try {
       await invoke('hide_window')
-    } catch (_) {}
+    } catch (_) { }
   }
 }
 
@@ -393,13 +348,13 @@ const dismissApiPrompt = async () => {
   showApiKeyPrompt.value = false
   try {
     await invoke('hide_window')
-  } catch (_) {}
+  } catch (_) { }
 }
 
 const hideWindow = async () => {
   try {
     await invoke('hide_window')
-  } catch (_) {}
+  } catch (_) { }
 }
 
 const copyText = async (text: string) => {
@@ -423,7 +378,7 @@ const startTranslation = async (text: string) => {
     // 取消当前进行中的翻译
     try {
       await invoke('cancel_all_translations')
-    } catch (_) {}
+    } catch (_) { }
   }
 
   // 生成新的请求 ID
@@ -434,17 +389,17 @@ const startTranslation = async (text: string) => {
   translationResults.value = []
   detectedLang.value = ''
   targetLang.value = ''
-  
+
   // 重置流式翻译状态
   reset()
 
   // isLoading.value = true // Managed by useStreamingTranslation's streamingLoading
   try {
     await invoke('set_main_loading', { loading: true })
-  } catch (_) {}
+  } catch (_) { }
   try {
     pinned.value = await invoke('get_main_pinned')
-  } catch (_) {}
+  } catch (_) { }
 
   // Get enabled providers and initialize streamingResults
   let activeProviders: ProviderInfo[] = []
@@ -460,7 +415,7 @@ const startTranslation = async (text: string) => {
       reset()
       try {
         await invoke('set_main_loading', { loading: false })
-      } catch (_) {}
+      } catch (_) { }
       return // No enabled providers, return directly
     }
 
@@ -524,14 +479,14 @@ const startTranslation = async (text: string) => {
     }
     try {
       await invoke('set_main_loading', { loading: false })
-    } catch (_) {}
+    } catch (_) { }
   } finally {
     // `set_main_loading` still needs to be called to update the Tauri window's loading state.
     // It should be set to false once all streaming results are complete (managed by streamingLoading in useStreamingTranslation).
     if (currentRequestId.value === now && !streamingLoading.value) { // Only set to false if all streams are complete
-         try {
-           await invoke('set_main_loading', { loading: false })
-         } catch (_) {}
+      try {
+        await invoke('set_main_loading', { loading: false })
+      } catch (_) { }
     }
   }
 }
@@ -540,14 +495,14 @@ onMounted(async () => {
   // Load pinned state
   try {
     pinned.value = await invoke('get_main_pinned')
-  } catch (_) {}
+  } catch (_) { }
 
   // Load settings
   try {
     const loadedSettings: any = await invoke('get_settings')
     settingsStore.setPrimaryTarget(loadedSettings.primary_target || 'zh-CN')
     settingsStore.setSecondaryTarget(loadedSettings.secondary_target || 'en')
-  } catch (_) {}
+  } catch (_) { }
 
   await loadEnabledProviders()
 
@@ -596,14 +551,14 @@ const updateWindowHeight = async () => {
 
   // Calculate the content height needed using the rendered card element
   const contentHeight = containerEl.scrollHeight
-  
+
   // Add some padding for safety (e.g. borders/shadows)
   // Note: If the content is smaller than min height, backend will handle it.
   const targetHeight = contentHeight + 2
 
   try {
     await invoke('resize_main_window', { height: targetHeight })
-  } catch (_) {}
+  } catch (_) { }
 }
 
 // Watch for content changes to update window height
@@ -622,7 +577,7 @@ watch(streamingLoading, async (loading) => {
   if (!loading) {
     try {
       await invoke('set_main_loading', { loading: false })
-    } catch (_) {}
+    } catch (_) { }
   }
 })
 
@@ -636,26 +591,6 @@ const togglePin = async () => {
     const errMsg = error?.message || String(error)
     showToast(`${t('common.error')}：${errMsg}`, 'error')
   }
-}
-
-const cancelCurrent = async () => {
-  if (!streamingLoading.value) return // Only cancel if there are active streams
-
-  try {
-    await invoke('cancel_all_translations')
-  } catch (_) {}
-
-  // Reset request ID to ignore any ongoing requests
-  currentRequestId.value = 0
-  // streamingLoading is managed internally by useStreamingTranslation
-
-  try {
-    await invoke('set_main_loading', { loading: false })
-  } catch (_) {}
-
-  try {
-    await invoke('hide_window')
-  } catch (_) {}
 }
 
 // Auto-resize source textarea within bounds
@@ -681,6 +616,7 @@ watch(sourcePreview, () => {
 .fade-leave-active {
   transition: opacity 0.15s ease;
 }
+
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;

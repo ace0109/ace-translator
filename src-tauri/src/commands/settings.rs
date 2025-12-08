@@ -120,7 +120,7 @@ pub async fn get_provider_configs(state: State<'_, AppState>) -> Result<Vec<Prov
                 "智谱AI",
                 providers::ZHIPU_MODELS.iter().map(|m| m.id.to_string()).collect(),
                 false,
-                providers::ZHIPU_MODELS.first().map(|m| m.id).unwrap_or("glm-4-flashx").to_string(),
+                providers::DEFAULT_ZHIPU_MODEL.to_string(),
             ),
             "openai" => (
                 "OpenAI",
@@ -146,12 +146,15 @@ pub async fn get_provider_configs(state: State<'_, AppState>) -> Result<Vec<Prov
         // fallback to default model if DB value is empty (helps fresh installs)
         let model = if row.model.is_empty() { default_model.clone() } else { row.model.clone() };
 
+        let provider_name = row.provider_name;
+        let enabled = if provider_name == "zhipu" { true } else { row.enabled != 0 };
+
         providers.push(ProviderInfo {
-            name: row.provider_name.clone(),
+            name: provider_name.clone(),
             display_name: display_name.to_string(),
             config: ProviderConfig {
-                provider_name: row.provider_name,
-                enabled: row.enabled != 0,
+                provider_name,
+                enabled,
                 api_key,
                 model,
                 base_url: row.base_url,

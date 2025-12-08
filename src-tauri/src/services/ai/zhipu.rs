@@ -10,7 +10,7 @@ use super::provider::{AIError, AIProvider, ApiTestResponse, ProviderConfig, Tran
 use crate::config::{prompts, providers};
 
 const API_URL: &str = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
-const DEFAULT_MODEL: &str = "glm-4-flashx";
+const DEFAULT_MODEL: &str = "glm-4-flash";
 const REQUEST_TIMEOUT: u64 = 30;
 
 #[derive(Debug, Serialize, Deserialize)]
