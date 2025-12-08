@@ -101,7 +101,12 @@ pub fn run() {
             // 3. Initialize System Tray
             crate::app_info!("正在初始化系统托盘...");
             use tauri::menu::{MenuBuilder, MenuItemBuilder};
-            let show = MenuItemBuilder::new("打开翻译窗口").id("show").build(app)?;
+            let show_label = if cfg!(target_os = "macos") {
+                "打开翻译窗口 (Option+Space)"
+            } else {
+                "打开翻译窗口 (Alt+Space)"
+            };
+            let show = MenuItemBuilder::new(show_label).id("show").build(app)?;
             let settings = MenuItemBuilder::new("打开设置").id("settings").build(app)?;
             let history = MenuItemBuilder::new("历史与日志").id("history").build(app)?;
             let quit = MenuItemBuilder::new("退出").id("quit").build(app)?;
@@ -144,15 +149,10 @@ pub fn run() {
                         _ => {}
                     }
                 })
-                .on_tray_icon_event(|tray, event| {
+                .on_tray_icon_event(|_tray, event| {
                     if let tauri::tray::TrayIconEvent::Click { button, .. } = event {
                         if button == tauri::tray::MouseButton::Left {
-                            // 托盘左键点击：屏幕居中显示主窗口
-                            if let Some(window) = tray.app_handle().get_webview_window("main") {
-                                let _ = commands::system::center_window_on_screen(&window);
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
+                            // 托盘左键点击：仅展开菜单，不自动打开窗口
                         }
                     }
                 })
