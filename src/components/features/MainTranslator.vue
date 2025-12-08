@@ -92,7 +92,7 @@
                 </AlertDescription>
               </Alert>
               <div v-else class="relative rounded-md border border-dashed bg-background/70 p-3">
-                <p class="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/90">
+                <p class="whitespace-pre-wrap wrap-break-word text-sm leading-relaxed text-foreground/90">
                   <span v-if="getProviderCardState(provider).loading" class="inline-flex align-middle">
                     <LoadingSpinner />
                   </span>
