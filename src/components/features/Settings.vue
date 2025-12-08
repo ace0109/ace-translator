@@ -307,9 +307,10 @@ const loadProviderConfigs = async () => {
   if (!isTauriEnv()) return
   try {
     const configs = await invoke<ProviderInfo[]>('get_provider_configs')
-    providers.value = configs
-    if (configs.length > 0 && !configs.find(p => p.name === activeProvider.value)) {
-      activeProvider.value = configs[0].name
+    const zhipuOnly = configs.filter(p => p.name === 'zhipu')
+    providers.value = zhipuOnly
+    if (zhipuOnly.length > 0 && !zhipuOnly.find(p => p.name === activeProvider.value)) {
+      activeProvider.value = zhipuOnly[0].name
     }
   } catch (error: any) {
     const errMsg = error?.message || String(error)
