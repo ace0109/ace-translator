@@ -31,10 +31,12 @@ export function useStreamingTranslation(
   currentRequestId: Ref<number>,
   onLanguageUpdate?: (detected: string, target: string) => void,
 ) {
+  const STREAM_TIMEOUT_MS = 30000
   const streamingResults = ref<Map<string, StreamingResult>>(new Map())
   const isLoading = ref(false)
   const error = ref<string | null>(null)
   let unlisten: (() => void) | null = null
+  let timeoutHandle: ReturnType<typeof window.setTimeout> | null = null
 
   // 初始化监听器
   const initListener = async () => {
@@ -71,6 +73,12 @@ export function useStreamingTranslation(
   }
 
   const initProviders = (providers: Array<{ provider: string; model: string }>) => {
+    if (timeoutHandle) {
+      window.clearTimeout(timeoutHandle)
+      timeoutHandle = null
+    }
+    const requestIdSnapshot = currentRequestId.value
+
     const next = new Map<string, StreamingResult>()
     providers.forEach(p => {
       const key = `${p.provider}-${p.model}`
@@ -85,6 +93,25 @@ export function useStreamingTranslation(
     streamingResults.value = next
     isLoading.value = true
     error.value = null
+
+    // 超时兜底：停止 loading 并给出提示，忽略后续迟到事件
+    timeoutHandle = window.setTimeout(() => {
+      if (currentRequestId.value !== requestIdSnapshot) return
+      const timedOut = new Map<string, StreamingResult>()
+      streamingResults.value.forEach((r, key) => {
+        timedOut.set(key, {
+          ...r,
+          isComplete: true,
+          loading: false,
+          error: '请求超时，请重试',
+        })
+      })
+      streamingResults.value = timedOut
+      isLoading.value = false
+      error.value = '请求超时，请重试'
+      currentRequestId.value = 0 // 忽略后续迟到事件
+      timeoutHandle = null
+    }, STREAM_TIMEOUT_MS)
   }
 
   const handleStart = (data: StreamEventData) => {
@@ -109,7 +136,7 @@ export function useStreamingTranslation(
           model: result.model,
           content: (current?.content || '') + (data.content || ''),
           isComplete: current?.isComplete || false,
-          loading: current?.loading ?? true,
+          loading: false, // 一旦有内容就不再显示 loading
           error: current?.error,
         }))
         break
@@ -137,6 +164,10 @@ export function useStreamingTranslation(
     const allComplete = Array.from(streamingResults.value.values()).every(r => r.isComplete)
     if (allComplete) {
       isLoading.value = false
+      if (timeoutHandle) {
+        window.clearTimeout(timeoutHandle)
+        timeoutHandle = null
+      }
     }
   }
 
@@ -165,6 +196,10 @@ export function useStreamingTranslation(
     const allComplete = Array.from(streamingResults.value.values()).every(r => r.isComplete)
     if (allComplete) {
       isLoading.value = false
+      if (timeoutHandle) {
+        window.clearTimeout(timeoutHandle)
+        timeoutHandle = null
+      }
     }
   }
 
@@ -172,6 +207,10 @@ export function useStreamingTranslation(
     streamingResults.value = new Map()
     isLoading.value = false
     error.value = null
+    if (timeoutHandle) {
+      window.clearTimeout(timeoutHandle)
+      timeoutHandle = null
+    }
   }
 
   // 初始化
