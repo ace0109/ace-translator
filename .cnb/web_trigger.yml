@@ -9,4 +9,4 @@ branch:
         # 触发的 CI 事件名，需要在 .cnb.yml 中配置
         event: build_and_deploy_docs
         # 是否默认按钮
-        isDefault: false
+        isDefault: true
