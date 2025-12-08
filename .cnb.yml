@@ -1,28 +1,27 @@
-$:
-  tag_push:
-    # 上传二进制包到 release 附件
+main:
+  build_and_deploy_docs:
     - docker:
-        build: Dockerfile
+        image: node:22
+        #volumes缓存：https://docs.cnb.cool/grammar/pipeline.html#volumes
+        volumes:
+          - /root/.npm:cow
+
+      imports: 
+        - https://cnb.cool/wangcaiyuan/private-key/-/blob/main/ssh.yml
+
       stages:
-        - name: changelog
-          image: cnbcool/changelog
-          exports:
-            latestChangeLog: LATEST_CHANGE_LOG
-        - name: create release
-          type: git:release
-          options:
-            description: ${LATEST_CHANGE_LOG}
         - name: 安装依赖
-          script: pnpm install --frozen-lockfile
-        - name: 构建程序
-          script: pnpm tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc
-        - name: release 上传附件
-          image: cnbcool/attachments:latest
+          script: npm install && npm run docs:build
+
+        - name: 查看目录
+          script: ls -a
+
+        - name: 部署文档
+          image: tencentcom/rsync
           settings:
-            attachments:
-              - src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
-              - src-tauri/target/x86_64-pc-windows-msvc/release/*.exe
-          exports:
-            FILES: FILES
-        - name: 输出附件
-          script: echo $FILES
+            host: $DEVELOP_HOST
+            user: $DEVELOP_USERNAME
+            port: $DEVELOP_PORT
+            key: $DEVELOP_KEY
+            source: ./docs/.vitepress/dist
+            target: /opt/1panel/www/sites/translator.wangcaiyuan.com/index
