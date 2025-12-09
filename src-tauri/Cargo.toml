@@ -1,6 +1,6 @@
 [package]
 name = "ace-translator"
-version = "1.0.0"
+version = "1.0.1"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -32,7 +32,7 @@ enigo = "0.2"
 tauri-plugin-clipboard-manager = "2.3.2"
 image = "0.25"
 mouse_position = "0.1.4"
-rdev = "0.5"
+rdev = { version = "0.5", features = ["unstable_grab"] }
 futures = "0.3"
 async-trait = "0.1"
 lazy_static = "1.4"
