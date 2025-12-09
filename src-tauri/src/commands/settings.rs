@@ -109,6 +109,8 @@ pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, Str
 /// 获取所有服务商配置
 #[tauri::command]
 pub async fn get_provider_configs(state: State<'_, AppState>) -> Result<Vec<ProviderInfo>, String> {
+    crate::app_info!("[Settings] get_provider_configs 被调用");
+
     #[derive(sqlx::FromRow)]
     struct DbProviderConfig {
         provider_name: String,
@@ -118,12 +120,21 @@ pub async fn get_provider_configs(state: State<'_, AppState>) -> Result<Vec<Prov
         base_url: Option<String>,
     }
 
+    crate::app_info!("[Settings] 正在查询 provider_configs 表...");
     let rows: Vec<DbProviderConfig> = sqlx::query_as(
         "SELECT provider_name, enabled, api_key, model, base_url FROM provider_configs WHERE provider_name = 'zhipu' ORDER BY provider_name"
     )
     .fetch_all(&state.db)
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| {
+        crate::app_error!("[Settings] 查询 provider_configs 失败: {}", e);
+        e.to_string()
+    })?;
+
+    crate::app_info!("[Settings] 查询到 {} 条记录", rows.len());
+    for row in &rows {
+        crate::app_info!("[Settings] - provider: {}, enabled: {}", row.provider_name, row.enabled);
+    }
 
     let mut providers = Vec::new();
     for row in rows {
@@ -208,6 +219,7 @@ pub async fn get_provider_configs(state: State<'_, AppState>) -> Result<Vec<Prov
         });
     }
 
+    crate::app_info!("[Settings] 返回 {} 个服务商配置", providers.len());
     Ok(providers)
 }
 

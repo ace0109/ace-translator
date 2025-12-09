@@ -303,7 +303,7 @@ const applyThemeClass = (theme: string) => {
   }
 }
 
-const loadProviderConfigs = async () => {
+const loadProviderConfigs = async (retries = 3): Promise<void> => {
   if (!isTauriEnv()) return
   try {
     const configs = await invoke<ProviderInfo[]>('get_provider_configs')
@@ -314,6 +314,11 @@ const loadProviderConfigs = async () => {
     }
   } catch (error: any) {
     const errMsg = error?.message || String(error)
+    // 如果是 state not managed 错误，说明后端还没准备好，重试
+    if (errMsg.includes('state not managed') && retries > 0) {
+      await new Promise(resolve => setTimeout(resolve, 100))
+      return loadProviderConfigs(retries - 1)
+    }
     showToast(`${t('settings.loadFailed')}：${errMsg}`, 'error')
   }
 }
@@ -467,9 +472,9 @@ const updateTheme = async (theme: 'light' | 'dark') => {
   await saveSettings()
 }
 
-onMounted(() => {
-  loadSettings()
-  loadProviderConfigs()
+onMounted(async () => {
+  await loadSettings()
+  await loadProviderConfigs()
 })
 
 watch(

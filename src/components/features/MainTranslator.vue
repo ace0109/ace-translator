@@ -280,7 +280,7 @@ const onTargetLangChange = async (newTargetLang: any) => {
     initProviders(activeProviders.map(p => ({ provider: p.name, model: p.config.model })))
   } catch (error: any) {
     const errMsg = error?.message || String(error)
-    showToast(`获取服务商配置失败：${errMsg}`, 'error')
+    showToast(`[translateWithLang]获取服务商配置失败：${errMsg}`, 'error')
     return
   }
 
@@ -408,7 +408,7 @@ const applyDefaultModel = (provider: ProviderInfo): ProviderInfo => {
   }
 }
 
-const loadEnabledProviders = async () => {
+const loadEnabledProviders = async (retries = 3): Promise<void> => {
   if (!isTauriEnv()) return
   try {
     const allProviders = await invoke<ProviderInfo[]>('get_provider_configs')
@@ -420,7 +420,12 @@ const loadEnabledProviders = async () => {
     updateWindowHeight()
   } catch (error: any) {
     const errMsg = error?.message || String(error)
-    showToast(`获取服务商配置失败：${errMsg}`, 'error')
+    // 如果是 state not managed 错误，说明后端还没准备好，重试
+    if (errMsg.includes('state not managed') && retries > 0) {
+      await new Promise(resolve => setTimeout(resolve, 100))
+      return loadEnabledProviders(retries - 1)
+    }
+    showToast(`[loadEnabledProviders]获取服务商配置失败：${errMsg}`, 'error')
   }
 }
 
@@ -527,7 +532,7 @@ const startTranslation = async (text: string) => {
     initProviders(activeProviders.map(p => ({ provider: p.name, model: p.config.model })))
   } catch (error: any) {
     const errMsg = error?.message || String(error)
-    showToast(`获取服务商配置失败：${errMsg}`, 'error')
+    showToast(`[doTranslate]获取服务商配置失败：${errMsg}`, 'error')
     return
   }
 
