@@ -270,6 +270,7 @@ pub fn run() {
             commands::translation::translate_text,
             commands::translation::translate_multi,
             commands::translation::translate_multi_stream_individual,
+            commands::translation::translate_with_specified_langs,
             commands::translation::cancel_translation,
             commands::translation::cancel_all_translations,
             commands::settings::save_settings,

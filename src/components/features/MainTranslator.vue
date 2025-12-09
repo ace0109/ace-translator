@@ -1,9 +1,9 @@
 <template>
   <Card ref="mainContainer"
-    class="relative flex w-full flex-col overflow-hidden rounded-sm border bg-background text-foreground shadow-lg">
+    class="relative flex w-full flex-col overflow-hidden rounded-sm border bg-background text-foreground shadow-lg pt-8">
     <CardHeader data-tauri-drag-region
-      class="h-10 flex-row items-center justify-between gap-2 space-y-0 border-b bg-card/70 px-3 py-2">
-      <CardTitle data-tauri-drag-region class="text-xs font-semibold text-muted-foreground">
+      class="fixed w-full top-0 left-0 z-10 bg-card h-10 flex-row items-center justify-between gap-2 space-y-0 border-b px-3 py-2">
+      <CardTitle data-tauri-drag-region class="text-xs font-semibold text-muted-foreground"> 
         {{ t('translator.title') }}
       </CardTitle>
       <CardAction class="flex items-center gap-1">
@@ -14,7 +14,7 @@
         <Button variant="ghost" size="icon" class="h-7 w-7 text-muted-foreground" @click="openSettings"
           :title="t('translator.openSettings')">
           <Settings class="h-4 w-4" />
-        </Button>
+        </Button> 
         <Button variant="ghost" size="icon" class="h-7 w-7 text-muted-foreground hover:text-destructive"
           @click="hideWindow" :title="t('translator.closeWindow')">
           <X class="h-4 w-4" />
@@ -31,7 +31,17 @@
         <ArrowRight class="h-3.5 w-3.5 text-muted-foreground" />
         <div class="flex items-center gap-2">
           <span class="text-muted-foreground">{{ t('translator.target') }}</span>
-          <Badge>{{ targetLabel }}</Badge>
+          <Select v-model="targetLang" @update:model-value="onTargetLangChange">
+            <SelectTrigger
+              class="h-6 w-auto min-w-20 border-0 bg-primary px-2 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+              <SelectValue :placeholder="targetLabel" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="lang in targetLanguageOptions" :key="lang.value" :value="lang.value">
+                {{ lang.label }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -85,7 +95,8 @@
               </div>
             </CardHeader>
 
-            <CardContent class="space-y-2 py-3">
+            <CardContent :ref="(el: any) => setContentRef(provider, el)"
+              class="space-y-2 py-3 max-h-80 overflow-y-auto">
               <Alert v-if="getProviderCardState(provider).error" variant="destructive" class="py-2">
                 <AlertDescription>
                   {{ getProviderCardState(provider).error || t('translator.translationFailed') }}
@@ -144,6 +155,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { isTauriEnv } from '@/utils/env'
 
 const { t } = useI18n()
@@ -190,6 +202,9 @@ const pinned = ref(false)
 const currentRequestId = ref(0)
 const enabledProviders = ref<ProviderInfo[]>([])
 
+// 存储每个 provider 翻译内容容器的 ref，用于流式渲染时自动滚动
+const contentRefs = new Map<string, HTMLElement>()
+
 const settingsStore = useSettingsStore()
 const { streamingResults, isLoading: streamingLoading, error: streamingError, reset, initProviders } = useStreamingTranslation(
   currentRequestId,
@@ -214,9 +229,96 @@ const langLabel = (lang: string) => {
 const detectedLabel = computed(() => langLabel(detectedLang.value))
 const targetLabel = computed(() => langLabel(targetLang.value))
 
+// 目标语言选项（排除"自动检测"）
+const targetLanguageOptions = computed(() => {
+  return languageOptions.filter(opt => opt.value !== 'auto')
+})
+
+// 用户手动选择目标语言时触发重新翻译
+const onTargetLangChange = async (newTargetLang: any) => {
+  if (typeof newTargetLang !== 'string' || !newTargetLang) return
+  if (!sourcePreview.value.trim() || !detectedLang.value) return
+
+  // 取消当前进行中的翻译
+  if (streamingLoading.value) {
+    try {
+      await invoke('cancel_all_translations')
+    } catch (_) { }
+  }
+
+  // 生成新的请求 ID
+  const now = Date.now()
+  currentRequestId.value = now
+
+  // 重置流式翻译状态
+  reset()
+  translationResults.value = []
+
+  try {
+    await invoke('set_main_loading', { loading: true })
+  } catch (_) { }
+
+  // 获取已启用的服务商
+  let activeProviders: ProviderInfo[] = []
+  try {
+    const allProviders = await invoke<ProviderInfo[]>('get_provider_configs')
+    const zhipuOnly = allProviders.filter(p => p.name === 'zhipu')
+    activeProviders = zhipuOnly
+      .filter(p => p.config.enabled)
+      .map(applyDefaultModel)
+    enabledProviders.value = activeProviders
+
+    if (activeProviders.length === 0) {
+      showApiKeyPrompt.value = true
+      reset()
+      try {
+        await invoke('set_main_loading', { loading: false })
+      } catch (_) { }
+      return
+    }
+
+    initProviders(activeProviders.map(p => ({ provider: p.name, model: p.config.model })))
+  } catch (error: any) {
+    const errMsg = error?.message || String(error)
+    showToast(`获取服务商配置失败：${errMsg}`, 'error')
+    return
+  }
+
+  try {
+    const providerNames = activeProviders.map(p => p.name)
+    await invoke('translate_with_specified_langs', {
+      text: sourcePreview.value,
+      sourceLang: detectedLang.value,
+      targetLang: newTargetLang,
+      requestId: now,
+      providers: providerNames,
+    })
+  } catch (error: any) {
+    if (currentRequestId.value !== now) return
+    const errMsg = error?.message || String(error)
+    showToast(`${t('translator.translationFailed')}：${errMsg}`, 'error')
+    try {
+      await invoke('set_main_loading', { loading: false })
+    } catch (_) { }
+  }
+}
+
 const providerKey = (provider: ProviderInfo) => {
   const model = provider.config.model || provider.available_models[0] || 'default'
   return `${provider.name}-${model}`
+}
+
+// 设置翻译内容容器的 ref，用于流式渲染时自动滚动
+const setContentRef = (provider: ProviderInfo, el: any) => {
+  const key = providerKey(provider)
+  if (el) {
+    const domEl = el.$el || el
+    if (domEl instanceof HTMLElement) {
+      contentRefs.set(key, domEl)
+    }
+  } else {
+    contentRefs.delete(key)
+  }
 }
 
 type ProviderCardState = {
@@ -436,7 +538,7 @@ const startTranslation = async (text: string) => {
       // This command will trigger parallel streaming translations for multiple providers,
       // and update the frontend via the event system.
       const providerNames = activeProviders.map(p => p.name)
-      await invoke('translate_multi_stream_individual', {
+      const langResult = await invoke<{ detected_lang: string; target_lang: string }>('translate_multi_stream_individual', {
         text: text,
         primaryTarget: settingsStore.primaryTarget,
         secondaryTarget: settingsStore.secondaryTarget,
@@ -444,8 +546,11 @@ const startTranslation = async (text: string) => {
         providers: providerNames, // Pass the names of enabled providers
       })
 
-      // We don't wait for a result here, as results are streamed via events to `streamingResults`
-      // We only handle potential errors or initial state setup.
+      // 立即更新语言检测结果（不等流式翻译完成）
+      if (currentRequestId.value === now) {
+        detectedLang.value = langResult.detected_lang
+        targetLang.value = langResult.target_lang
+      }
     } else {
       // Use traditional translation
       const result = await invoke<MultiProviderResult>('translate_multi', {
@@ -582,6 +687,21 @@ watch(streamingLoading, async (loading) => {
     } catch (_) { }
   }
 })
+
+// 流式渲染时自动滚动到底部
+watch(streamingResults, () => {
+  nextTick(() => {
+    streamingResults.value.forEach((state, key) => {
+      // 流式渲染中（未完成）且有内容时才滚动
+      if (!state.isComplete && state.content) {
+        const el = contentRefs.get(key)
+        if (el) {
+          el.scrollTop = el.scrollHeight
+        }
+      }
+    })
+  })
+}, { deep: true })
 
 const togglePin = async () => {
   const next = !pinned.value

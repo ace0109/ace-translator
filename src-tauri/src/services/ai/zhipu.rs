@@ -129,9 +129,17 @@ impl AIProvider for ZhipuProvider {
         }
 
         let prompt = format!(
-                "Detect the language of the following text. Return ONLY the ISO 639-1 language code (e.g., 'en', 'zh', 'ja'). Do not explain.\n\nText: {}",
-                text
-            );
+            r#"Detect the language of the following text. Return ONLY ONE language code from this list: zh-CN, zh-TW, en, ja, ko, fr, de, es, ru, ar, pt, it, nl, sv, no, da, fi, pl, cs, hu, ro.
+
+Rules:
+- For Simplified Chinese, return "zh-CN"
+- For Traditional Chinese, return "zh-TW"
+- For other languages, return the corresponding code from the list
+- Do not explain, just output the code
+
+Text: {}"#,
+            text
+        );
 
         let payload = json!({
             "model": self.model,
