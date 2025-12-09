@@ -12,7 +12,9 @@
     "error": "错误",
     "success": "成功",
     "later": "稍后",
-    "goToSettings": "前往设置"
+    "goToSettings": "前往设置",
+    "retry": "重试",
+    "copyFailed": "复制失败"
   },
   "translator": {
     "title": "Ace Translator",
@@ -35,7 +37,9 @@
     "openSettings": "打开设置",
     "closeWindow": "关闭窗口",
     "pinned": "已固定窗口",
-    "unpinned": "已取消固定"
+    "unpinned": "已取消固定",
+    "loading": "正在读取配置...",
+    "loadFailed": "读取配置失败"
   },
   "settings": {
     "title": "设置",
@@ -123,13 +127,16 @@
       "label": "语言",
       "saved": "界面语言已更新"
     },
-    "loadFailed": "加载设置失败",
+    "loading": "正在读取设置...",
     "saveFailed": "保存失败",
     "saved": "设置已保存",
+    "loadFailed": "加载设置失败",
     "notInTauri": "当前不在 Tauri 环境"
   },
   "history": {
     "title": "历史与日志",
+    "loading": "正在读取...",
+    "loadFailed": "读取失败",
     "tabs": {
       "history": "翻译历史",
       "cache": "缓存管理",
@@ -210,6 +217,8 @@
     "devMode": "开发者模式",
     "enabled": "已启用",
     "disabled": "未启用",
+    "loading": "正在读取...",
+    "loadFailed": "读取失败",
     "devModeHint": "连续点击版本号 7 次解锁开发者模式，托盘将显示日志入口。",
     "devModeUnlocked": "开发者模式已开启",
     "update": {

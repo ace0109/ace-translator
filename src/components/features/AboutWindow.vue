@@ -1,6 +1,34 @@
 <template>
   <div class="flex min-h-screen items-center justify-center bg-background text-foreground">
-    <Card class="w-full min-h-screen rounded-none">
+    <!-- 全屏 Loading -->
+    <div v-if="isLoading" class="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+      <div class="flex flex-col items-center gap-4">
+        <Loader2 class="h-8 w-8 animate-spin text-primary" />
+        <p class="text-sm text-muted-foreground">{{ t('about.loading') }}</p>
+      </div>
+    </div>
+
+    <!-- 配置加载失败弹窗 -->
+    <Dialog v-model:open="showErrorDialog">
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle class="text-destructive">{{ t('about.loadFailed') }}</DialogTitle>
+          <DialogDescription>
+            {{ errorMessage }}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" @click="showErrorDialog = false">
+            {{ t('common.cancel') }}
+          </Button>
+          <Button @click="retryInit">
+            {{ t('common.retry') }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Card class="w-full min-h-screen rounded-none" :class="{ 'opacity-50': isLoading }">
       <CardHeader>
         <CardTitle class="text-lg">{{ t('about.title') }}</CardTitle>
         <CardDescription>{{ t('about.subtitle') }}</CardDescription>
@@ -76,7 +104,9 @@ import { relaunch } from '@tauri-apps/plugin-process'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { showToast } from '@/lib/toast'
+import { isTauriEnv } from '@/utils/env'
 import { Loader2, RefreshCw, Download } from 'lucide-vue-next'
 
 const { t } = useI18n()
@@ -86,6 +116,10 @@ const appInfo = reactive({
   version: '',
   devMode: false,
 })
+const isLoading = ref(false)
+const showErrorDialog = ref(false)
+const errorMessage = ref('')
+let hasInitialized = false
 
 const updateState = reactive({
   checking: false,
@@ -107,7 +141,7 @@ async function loadInfo() {
     appInfo.version = res.version
     appInfo.devMode = res.dev_mode
   } catch (e) {
-    console.error('获取应用信息失败', e)
+    throw new Error(`获取应用信息失败: ${e}`)
   }
 }
 
@@ -208,7 +242,53 @@ async function downloadAndInstall() {
   }
 }
 
+const init = async () => {
+  if (!isTauriEnv()) return
+
+  isLoading.value = true
+  try {
+    await loadInfo()
+  } catch (error: any) {
+    errorMessage.value = error.message || String(error)
+    showErrorDialog.value = true
+  } finally {
+    isLoading.value = false
+  }
+}
+
+const retryInit = async () => {
+  showErrorDialog.value = false
+  await init()
+}
+
 onMounted(() => {
-  loadInfo()
+  // 不要在 onMounted 时加载，等待窗口显示或聚焦时再加载
+
+  // 监听窗口显示和聚焦事件
+  let hasInitialized = false
+
+  // 监听窗口显示事件
+  window.addEventListener('DOMContentLoaded', () => {
+    if (!hasInitialized) {
+      setTimeout(() => init(), 100)
+      hasInitialized = true
+    }
+  })
+
+  // 监听窗口获得焦点
+  window.addEventListener('focus', () => {
+    if (!hasInitialized) {
+      init()
+      hasInitialized = true
+    }
+  })
+
+  // 监听窗口可见性变化
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && !hasInitialized) {
+      init()
+      hasInitialized = true
+    }
+  })
 })
 </script>
