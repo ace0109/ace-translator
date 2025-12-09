@@ -33,7 +33,7 @@
               <span class="text-muted-foreground">{{ t('about.update.newVersion') }}</span>
               <Badge variant="default">{{ updateState.version }}</Badge>
             </div>
-            <p v-if="updateState.notes" class="text-xs text-muted-foreground line-clamp-3">
+            <p v-if="updateState.notes" class="text-xs text-muted-foreground whitespace-pre-line">
               {{ updateState.notes }}
             </p>
             <Button class="w-full" :disabled="updateState.downloading" @click="downloadAndInstall">
