@@ -48,6 +48,10 @@ pub fn run() {
         .setup(|app| {
             crate::app_info!("开始初始化应用...");
 
+            // macOS: 隐藏 Dock 图标，作为托盘应用运行
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
             // macOS: 确保主窗口在激活时跟随当前桌面，避免快捷键唤起时切回旧的 Space。
             if let Some(window) = app.get_webview_window("main") {
                 crate::utils::window::ensure_window_on_current_space(&window);
