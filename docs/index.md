@@ -8,7 +8,7 @@ hero:
   actions:
     - theme: brand
       text: 下载 Windows 版
-      link: https://tauri.wangcaiyuan.com/releases/download/stable/ace-translator-setup.exe
+      link: https://tauri.wangcaiyuan.com/releases/download/stable/ace-translator.exe
     - theme: alt
       text: 下载 macOS 版
       link: https://tauri.wangcaiyuan.com/releases/download/stable/ace-translator.dmg
