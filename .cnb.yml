@@ -19,7 +19,8 @@ main:
         - name: 部署文档
           image: tencentcom/rsync
           settings:
-            host: $DEVELOP_HOST
+            hosts: 
+              - $DEVELOP_HOST
             user: $DEVELOP_USERNAME
             port: $DEVELOP_PORT
             key: $DEVELOP_KEY
