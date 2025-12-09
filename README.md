@@ -33,16 +33,16 @@ Ace AI 翻译器 - 一款基于 AI 的桌面翻译应用，支持多语言翻译
 
 macos
 ```shell
-export TAURI_SIGNING_PRIVATE_KEY="Path or content of your private key"
+export TAURI_SIGNING_PRIVATE_KEY="***REMOVED_UPDATE_SIGNING_PRIVATE_KEY***"
 # optionally also add a password
-export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="***REMOVED_UPDATE_SIGNING_PASSWORD***"
 ```
 
 windows
 ```shell
-$env:TAURI_SIGNING_PRIVATE_KEY="Path or content of your private key"
+$env:TAURI_SIGNING_PRIVATE_KEY="***REMOVED_UPDATE_SIGNING_PRIVATE_KEY***"
 <# optionally also add a password #>
-$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD="***REMOVED_UPDATE_SIGNING_PASSWORD***"
 ```
 
 ## Windows 打包
