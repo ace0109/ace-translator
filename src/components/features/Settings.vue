@@ -1,6 +1,34 @@
 <template>
   <div class="p-6 bg-background">
-    <div class="mx-auto flex max-w-3xl flex-col gap-6">
+    <!-- 全屏 Loading -->
+    <div v-if="isLoading" class="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+      <div class="flex flex-col items-center gap-4">
+        <Loader2 class="h-8 w-8 animate-spin text-primary" />
+        <p class="text-sm text-muted-foreground">{{ t('settings.loading') }}</p>
+      </div>
+    </div>
+
+    <!-- 配置加载失败弹窗 -->
+    <Dialog v-model:open="showErrorDialog">
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle class="text-destructive">{{ t('settings.loadFailed') }}</DialogTitle>
+          <DialogDescription>
+            {{ errorMessage }}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" @click="showErrorDialog = false">
+            {{ t('common.cancel') }}
+          </Button>
+          <Button @click="retryInit">
+            {{ t('common.retry') }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <div class="mx-auto flex max-w-3xl flex-col gap-6" :class="{ 'opacity-50': isLoading }">
       <!-- 服务商配置 -->
       <Card>
         <CardHeader>
@@ -221,6 +249,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import LanguageSelector from '../common/LanguageSelector.vue'
 import { showToast } from '@/lib/toast'
 import { isTauriEnv } from '@/utils/env'
@@ -274,6 +303,9 @@ const settingsForm = ref<SettingsForm>({
 const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0
 
 const isSaving = ref(false)
+const isLoading = ref(false)
+const showErrorDialog = ref(false)
+const errorMessage = ref('')
 
 // 服务商相关状态
 const providers = ref<ProviderInfo[]>([])
@@ -303,7 +335,7 @@ const applyThemeClass = (theme: string) => {
   }
 }
 
-const loadProviderConfigs = async (retries = 3): Promise<void> => {
+const loadProviderConfigs = async (): Promise<void> => {
   if (!isTauriEnv()) return
   try {
     const configs = await invoke<ProviderInfo[]>('get_provider_configs')
@@ -314,12 +346,7 @@ const loadProviderConfigs = async (retries = 3): Promise<void> => {
     }
   } catch (error: any) {
     const errMsg = error?.message || String(error)
-    // 如果是 state not managed 错误，说明后端还没准备好，重试
-    if (errMsg.includes('state not managed') && retries > 0) {
-      await new Promise(resolve => setTimeout(resolve, 100))
-      return loadProviderConfigs(retries - 1)
-    }
-    showToast(`${t('settings.loadFailed')}：${errMsg}`, 'error')
+    throw new Error(errMsg)
   }
 }
 
@@ -405,7 +432,7 @@ const testCurrentProvider = async () => {
 
 
 
-const loadSettings = async () => {
+const loadSettings = async (): Promise<void> => {
   if (!isTauriEnv()) return
   try {
     const loadedSettings: any = await invoke('get_settings')
@@ -473,8 +500,36 @@ const updateTheme = async (theme: 'light' | 'dark') => {
 }
 
 onMounted(async () => {
-  await loadSettings()
-  await loadProviderConfigs()
+  // 不要在 onMounted 时加载，等待窗口显示或聚焦时再加载
+})
+
+// 监听窗口显示和聚焦事件
+onMounted(() => {
+  let hasInitialized = false
+
+  // 监听窗口显示事件
+  window.addEventListener('DOMContentLoaded', () => {
+    if (!hasInitialized) {
+      setTimeout(() => initSettings(), 100)
+      hasInitialized = true
+    }
+  })
+
+  // 监听窗口获得焦点
+  window.addEventListener('focus', () => {
+    if (!hasInitialized) {
+      initSettings()
+      hasInitialized = true
+    }
+  })
+
+  // 监听窗口可见性变化
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && !hasInitialized) {
+      initSettings()
+      hasInitialized = true
+    }
+  })
 })
 
 watch(
@@ -518,5 +573,27 @@ const changeLocale = (newLocale: string) => {
   saveLocale(newLocale as SupportedLocale)
   saveSettings()
   showToast(t('settings.interfaceLanguage.saved'), 'info')
+}
+
+const initSettings = async () => {
+  if (!isTauriEnv()) return
+
+  isLoading.value = true
+  try {
+    await Promise.all([
+      loadSettings(),
+      loadProviderConfigs()
+    ])
+  } catch (error: any) {
+    errorMessage.value = error.message || String(error)
+    showErrorDialog.value = true
+  } finally {
+    isLoading.value = false
+  }
+}
+
+const retryInit = async () => {
+  showErrorDialog.value = false
+  await initSettings()
 }
 </script>

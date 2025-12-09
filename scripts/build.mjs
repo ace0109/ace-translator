@@ -8,7 +8,7 @@ import { execSync } from 'child_process'
 import { resolve, dirname, basename } from 'path'
 import { fileURLToPath } from 'url'
 import { platform } from 'os'
-import { readFileSync, mkdirSync, copyFileSync, readdirSync, existsSync } from 'fs'
+import { readFileSync, mkdirSync, copyFileSync, readdirSync, existsSync, rmSync } from 'fs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const rootDir = resolve(__dirname, '..')
@@ -55,13 +55,19 @@ try {
   const outputDir = resolve(targetDir, version)
   mkdirSync(outputDir, { recursive: true })
 
-  // 根据构建目标确定 bundle 目录位置
-  // 默认是 target/release/bundle，指定 --target 时是 target/{target}/release/bundle
-  const possibleBundleDirs = [
-    resolve(targetDir, 'release', 'bundle'),
-    resolve(targetDir, 'x86_64-pc-windows-msvc', 'release', 'bundle'),
-    resolve(targetDir, 'universal-apple-darwin', 'release', 'bundle'),
-  ]
+  // 根据构建参数确定 bundle 目录位置
+  // 从 args 中提取 --target 参数
+  const targetIndex = args.findIndex(arg => arg === '--target' || arg === '-t')
+  const buildTarget = targetIndex !== -1 && args[targetIndex + 1] ? args[targetIndex + 1] : null
+
+  let bundleDir
+  if (buildTarget) {
+    bundleDir = resolve(targetDir, buildTarget, 'release', 'bundle')
+  } else {
+    bundleDir = resolve(targetDir, 'release', 'bundle')
+  }
+
+  console.log(`📂 Bundle 目录: ${bundleDir}`)
 
   let collectedFiles = []
 
@@ -73,9 +79,7 @@ try {
       .replace(/-setup/, '')             // 去掉 -setup
   }
 
-  for (const bundleDir of possibleBundleDirs) {
-    if (!existsSync(bundleDir)) continue
-
+  if (existsSync(bundleDir)) {
     // 收集 NSIS 安装包 (Windows)
     const nsisDir = resolve(bundleDir, 'nsis')
     if (existsSync(nsisDir)) {
@@ -113,6 +117,25 @@ try {
   if (collectedFiles.length > 0) {
     console.log(`\n✅ 构建产物已收集到: target/${version}/`)
     collectedFiles.forEach(f => console.log(`   - ${f}`))
+
+    // 清空原产物目录
+    console.log('\n🧹 正在清理原产物目录...')
+    const nsisDir = resolve(bundleDir, 'nsis')
+    const dmgDir = resolve(bundleDir, 'dmg')
+    const macosDir = resolve(bundleDir, 'macos')
+
+    if (existsSync(nsisDir)) {
+      rmSync(nsisDir, { recursive: true, force: true })
+      console.log(`   - 已清理 ${nsisDir}`)
+    }
+    if (existsSync(dmgDir)) {
+      rmSync(dmgDir, { recursive: true, force: true })
+      console.log(`   - 已清理 ${dmgDir}`)
+    }
+    if (existsSync(macosDir)) {
+      rmSync(macosDir, { recursive: true, force: true })
+      console.log(`   - 已清理 ${macosDir}`)
+    }
   } else {
     console.log('\n⚠️  未找到构建产物')
   }

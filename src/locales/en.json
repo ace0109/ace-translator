@@ -12,7 +12,9 @@
     "error": "Error",
     "success": "Success",
     "later": "Later",
-    "goToSettings": "Go to Settings"
+    "goToSettings": "Go to Settings",
+    "retry": "Retry",
+    "copyFailed": "Copy failed"
   },
   "translator": {
     "title": "Ace Translator",
@@ -35,7 +37,9 @@
     "openSettings": "Open Settings",
     "closeWindow": "Close window",
     "pinned": "Window pinned",
-    "unpinned": "Window unpinned"
+    "unpinned": "Window unpinned",
+    "loading": "Loading...",
+    "loadFailed": "Failed to load"
   },
   "settings": {
     "title": "Settings",
@@ -123,6 +127,7 @@
       "label": "Language",
       "saved": "Interface language updated"
     },
+    "loading": "Loading settings...",
     "loadFailed": "Failed to load settings",
     "saveFailed": "Save failed",
     "saved": "Settings saved",
@@ -130,6 +135,8 @@
   },
   "history": {
     "title": "History & Logs",
+    "loading": "Loading...",
+    "loadFailed": "Failed to load",
     "tabs": {
       "history": "Translation History",
       "cache": "Cache Management",
@@ -210,6 +217,8 @@
     "devMode": "Developer Mode",
     "enabled": "Enabled",
     "disabled": "Disabled",
+    "loading": "Loading...",
+    "loadFailed": "Failed to load",
     "devModeHint": "Tap the version number 7 times to unlock developer mode and show Logs in tray.",
     "devModeUnlocked": "Developer mode enabled",
     "update": {

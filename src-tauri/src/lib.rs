@@ -228,14 +228,14 @@ pub fn run() {
                 }
             }
 
-            // 首次启动时显示主窗口（居中）
+            crate::app_info!("应用初始化完成");
+
+            // 应用初始化完成后再显示主窗口（居中）
             if let Some(window) = app.get_webview_window("main") {
                 let _ = commands::system::center_window_on_screen(&window);
                 let _ = window.show();
                 let _ = window.set_focus();
             }
-
-            crate::app_info!("应用初始化完成");
             Ok(())
         })
         .on_window_event(|window, event| match event {

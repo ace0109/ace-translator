@@ -1,7 +1,8 @@
 <template>
   <Card ref="mainContainer"
     class="relative flex w-full flex-col overflow-hidden rounded-sm border bg-background text-foreground shadow-lg pt-8">
-    <CardHeader data-tauri-drag-region
+
+      <CardHeader data-tauri-drag-region
       class="fixed w-full top-0 left-0 z-10 bg-card h-10 flex-row items-center justify-between gap-2 space-y-0 border-b px-3 py-2">
       <CardTitle data-tauri-drag-region class="text-xs font-semibold text-muted-foreground"> 
         {{ t('translator.title') }}
@@ -118,7 +119,7 @@
       </div>
     </CardContent>
 
-    <Dialog :open="showApiKeyPrompt" @update:open="(open) => (showApiKeyPrompt = open)">
+    <Dialog :open="showApiKeyPrompt" @update:open="(open: boolean) => (showApiKeyPrompt = open)">
       <DialogContent class="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>{{ t('translator.noProvider') }}</DialogTitle>
@@ -147,7 +148,7 @@ import { useSettingsStore } from '@/stores/settings'
 import { languageOptions } from '@/constants/languages'
 import { showToast } from '@/lib/toast'
 import { useStreamingTranslation } from '@/composables/useStreamingTranslation'
-import { Pin, PinOff, Settings, X, Copy, ArrowRight } from 'lucide-vue-next'
+import { Pin, PinOff, Settings, X, Copy, ArrowRight, Loader2 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -201,6 +202,8 @@ const targetLang = ref('')
 const pinned = ref(false)
 const currentRequestId = ref(0)
 const enabledProviders = ref<ProviderInfo[]>([])
+const isLoading = ref(false)
+let hasInitialized = false
 
 // 存储每个 provider 翻译内容容器的 ref，用于流式渲染时自动滚动
 const contentRefs = new Map<string, HTMLElement>()
@@ -280,7 +283,7 @@ const onTargetLangChange = async (newTargetLang: any) => {
     initProviders(activeProviders.map(p => ({ provider: p.name, model: p.config.model })))
   } catch (error: any) {
     const errMsg = error?.message || String(error)
-    showToast(`[translateWithLang]获取服务商配置失败：${errMsg}`, 'error')
+    showToast(`获取服务商配置失败：${errMsg}`, 'error')
     return
   }
 
@@ -408,7 +411,7 @@ const applyDefaultModel = (provider: ProviderInfo): ProviderInfo => {
   }
 }
 
-const loadEnabledProviders = async (retries = 3): Promise<void> => {
+const loadEnabledProviders = async (): Promise<void> => {
   if (!isTauriEnv()) return
   try {
     const allProviders = await invoke<ProviderInfo[]>('get_provider_configs')
@@ -420,12 +423,21 @@ const loadEnabledProviders = async (retries = 3): Promise<void> => {
     updateWindowHeight()
   } catch (error: any) {
     const errMsg = error?.message || String(error)
-    // 如果是 state not managed 错误，说明后端还没准备好，重试
-    if (errMsg.includes('state not managed') && retries > 0) {
-      await new Promise(resolve => setTimeout(resolve, 100))
-      return loadEnabledProviders(retries - 1)
-    }
-    showToast(`[loadEnabledProviders]获取服务商配置失败：${errMsg}`, 'error')
+    throw new Error(errMsg)
+  }
+}
+
+const initMain = async () => {
+  if (!isTauriEnv()) return
+
+  isLoading.value = true
+  try {
+    await loadEnabledProviders()
+  } catch (error: any) {
+    console.error('Failed to load enabled providers:', error)
+    // 不再显示错误弹窗，因为窗口只在后端准备好后才显示
+  } finally {
+    isLoading.value = false
   }
 }
 
@@ -532,7 +544,7 @@ const startTranslation = async (text: string) => {
     initProviders(activeProviders.map(p => ({ provider: p.name, model: p.config.model })))
   } catch (error: any) {
     const errMsg = error?.message || String(error)
-    showToast(`[doTranslate]获取服务商配置失败：${errMsg}`, 'error')
+    showToast(`获取服务商配置失败：${errMsg}`, 'error')
     return
   }
 
@@ -616,12 +628,11 @@ onMounted(async () => {
     settingsStore.setSecondaryTarget(loadedSettings.secondary_target || 'en')
   } catch (_) { }
 
-  await loadEnabledProviders()
+  // 窗口只会在后端准备好后才显示，所以可以直接初始化
+  await initMain()
 
   // Listen for provider config changes
   providerConfigUnlisten = await listen('provider-config-changed', async () => {
-    // If we were showing the "no provider" prompt, we can dismiss it now
-    // assuming the user just enabled a provider.
     if (showApiKeyPrompt.value) {
       showApiKeyPrompt.value = false
     }
