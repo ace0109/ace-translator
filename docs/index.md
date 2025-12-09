@@ -10,8 +10,8 @@ hero:
       text: 下载 Windows 版
       link: https://tauri.wangcaiyuan.com/releases/download/ace-translator_0.2.1_x64-setup.exe
     - theme: alt
-      text: 下载 macOS 版 (即将推出)
-      link: '#'
+      text: 下载 macOS 版
+      link: https://tauri.wangcaiyuan.com/releases/download/ace-translator_0.2.1_universal.dmg
 
 features:
   - title: 🤖 强大的 AI 核心

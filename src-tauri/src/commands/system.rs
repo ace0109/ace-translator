@@ -197,7 +197,7 @@ pub async fn resize_main_window(app: AppHandle, height: f64) -> Result<(), Strin
                 let monitor_size = monitor
                     .size()
                     .to_logical::<f64>(window.scale_factor().map_err(|e| e.to_string())?);
-                monitor_size.height * 0.7
+                monitor_size.height * 0.8
             } else {
                 800.0 // 默认最大高度
             };

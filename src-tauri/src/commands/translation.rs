@@ -811,6 +811,13 @@ async fn _translate_multi_stream_parallel(
     })
 }
 
+/// 语言检测结果
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LanguageDetectionResult {
+    pub detected_lang: String,
+    pub target_lang: String,
+}
+
 /// 多服务商并行流式翻译（通过事件流式更新前端）
 #[tauri::command]
 pub async fn translate_multi_stream_individual(
@@ -821,7 +828,7 @@ pub async fn translate_multi_stream_individual(
     #[allow(non_snake_case)] secondaryTarget: String,
     #[allow(non_snake_case)] requestId: u64,
     providers: Vec<String>, // List of provider names to use
-) -> Result<(), String> {
+) -> Result<LanguageDetectionResult, String> {
     if text.trim().is_empty() {
         return Err("Text is empty".to_string());
     }
@@ -897,6 +904,103 @@ pub async fn translate_multi_stream_individual(
             // Remove any previous handles for this request ID
             handles.remove(&requestId);
             // Store new handles
+            handles.insert(requestId, abort_handles_for_request.into());
+        }
+    }
+
+    // Cleanup abort handles once all streaming tasks complete
+    {
+        let app_handle = app.clone();
+        tokio::spawn(async move {
+            let _ = futures::future::join_all(join_handles).await;
+            if let Some(state) = app_handle.try_state::<AppState>() {
+                if let Ok(mut handles) = state.main_abort_handles.lock() {
+                    handles.remove(&requestId);
+                }
+                if let Ok(mut cancelled) = state.cancelled_requests.lock() {
+                    cancelled.remove(&requestId);
+                }
+            }
+        });
+    }
+
+    Ok(LanguageDetectionResult {
+        detected_lang,
+        target_lang,
+    })
+}
+
+/// 使用指定的源语言和目标语言进行流式翻译（跳过语言检测）
+#[tauri::command]
+pub async fn translate_with_specified_langs(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    text: String,
+    #[allow(non_snake_case)] sourceLang: String,
+    #[allow(non_snake_case)] targetLang: String,
+    #[allow(non_snake_case)] requestId: u64,
+    providers: Vec<String>,
+) -> Result<(), String> {
+    if text.trim().is_empty() {
+        return Err("Text is empty".to_string());
+    }
+    clear_cancelled_request(&state, requestId);
+
+    // Get all enabled providers
+    let all_enabled_providers = get_enabled_providers(&state.db).await?;
+    if all_enabled_providers.is_empty() {
+        return Err("没有已启用的服务商。请在设置中配置并启用至少一个服务商。".to_string());
+    }
+
+    // Filter providers based on the requested names
+    let selected_providers: Vec<ProviderConfig> = all_enabled_providers
+        .into_iter()
+        .filter(|p| providers.contains(&p.provider_name))
+        .collect();
+
+    if selected_providers.is_empty() {
+        return Err("没有找到指定的已启用服务商。".to_string());
+    }
+
+    let base_request = TranslationRequest {
+        text: text.clone(),
+        source_lang: sourceLang.clone(),
+        target_lang: targetLang.clone(),
+    };
+
+    // Store abort handles for cancellation
+    let mut abort_handles_for_request = HashMap::new();
+    let mut join_handles = Vec::new();
+
+    for config in selected_providers.into_iter() {
+        let app_clone = app.clone();
+        let config_clone = config.clone();
+        let request_clone = base_request.clone();
+        let req_id_clone = requestId;
+
+        let (abort_handle, abort_registration) = AbortHandle::new_pair();
+        abort_handles_for_request.insert(config_clone.provider_name.clone(), abort_handle);
+
+        let join_handle = tokio::spawn(async move {
+            let _ = Abortable::new(
+                translate_stream_with_provider(
+                    &app_clone,
+                    &config_clone,
+                    &request_clone,
+                    req_id_clone,
+                ),
+                abort_registration,
+            )
+            .await;
+        });
+
+        join_handles.push(join_handle);
+    }
+
+    // Store the individual abort handles under the main requestId
+    {
+        if let Ok(mut handles) = state.main_abort_handles.lock() {
+            handles.remove(&requestId);
             handles.insert(requestId, abort_handles_for_request.into());
         }
     }
