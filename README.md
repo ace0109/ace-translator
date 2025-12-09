@@ -31,6 +31,20 @@ Ace AI 翻译器 - 一款基于 AI 的桌面翻译应用，支持多语言翻译
 
 # 构建指南
 
+macos
+```shell
+export TAURI_SIGNING_PRIVATE_KEY="Path or content of your private key"
+# optionally also add a password
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
+```
+
+windows
+```shell
+$env:TAURI_SIGNING_PRIVATE_KEY="Path or content of your private key"
+<# optionally also add a password #>
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
+```
+
 ## Windows 打包
 1. 安装依赖（锁定版本）：`pnpm install --frozen-lockfile`
 2. 构建 x64 安装包：`pnpm tauri build --target x86_64-pc-windows-msvc`

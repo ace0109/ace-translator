@@ -8,10 +8,10 @@ hero:
   actions:
     - theme: brand
       text: 下载 Windows 版
-      link: https://tauri.wangcaiyuan.com/releases/download/ace-translator_0.2.1_x64-setup.exe
+      link: https://tauri.wangcaiyuan.com/releases/download/stable/ace-translator-setup.exe
     - theme: alt
       text: 下载 macOS 版
-      link: https://tauri.wangcaiyuan.com/releases/download/ace-translator_0.2.1_universal.dmg
+      link: https://tauri.wangcaiyuan.com/releases/download/stable/ace-translator.dmg
 
 features:
   - title: 🤖 强大的 AI 核心
