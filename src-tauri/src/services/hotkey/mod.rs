@@ -16,7 +16,7 @@ use core_graphics::event::{
 };
 
 #[cfg(any(target_os = "windows", target_os = "linux"))] // rdev supports Windows and Linux
-use rdev::{listen, Event, EventType, Key};
+use rdev::{grab, Event, EventType, Key};
 
 #[derive(Default)]
 struct DoubleTapState {
@@ -260,7 +260,7 @@ pub fn start_listener(app: tauri::AppHandle) {
         let tap = match CGEventTap::new(
             CGEventTapLocation::Session,
             CGEventTapPlacement::HeadInsertEventTap,
-            CGEventTapOptions::ListenOnly,
+            CGEventTapOptions::Default, // 使用 Default 模式以便拦截事件
             vec![CGEventType::KeyDown, CGEventType::FlagsChanged],
             {
                 let app_handle = app.clone();
@@ -302,6 +302,11 @@ pub fn start_listener(app: tauri::AppHandle) {
                                 tauri::async_runtime::spawn(async move {
                                     handle_alt_space(app_clone).await;
                                 });
+                                // 将事件类型设置为 Null 来阻止空格传递
+                                // core-graphics crate 的 bug：返回 None 时仍会传递原事件
+                                // 所以我们修改事件类型为 Null 来阻止它
+                                event.set_type(CGEventType::Null);
+                                return Some(event.to_owned());
                             }
                             // Cmd/Ctrl + C 双击检测
                             else if key_code == KEY_C {
@@ -450,7 +455,8 @@ pub fn start_listener(app: tauri::AppHandle) {
     std::thread::spawn(move || {
         app_info!("Windows 热键监听线程已启动");
         let state = state.clone();
-        if let Err(e) = listen(move |event: Event| {
+        // 使用 grab 而不是 listen，以便可以拦截事件
+        if let Err(e) = grab(move |event: Event| {
             let mut guard = state.lock().unwrap();
             match event.event_type {
                 EventType::KeyPress(key) => {
@@ -467,11 +473,13 @@ pub fn start_listener(app: tauri::AppHandle) {
                         tauri::async_runtime::spawn(async move {
                             handle_alt_space(app_clone).await;
                         });
+                        // 拦截事件，不让空格传递到其他应用
+                        return None;
                     } else if key == Key::KeyC {
                         // Rdev has Key::KeyC directly
                         if !(guard.ctrl_down || guard.meta_down) {
                             // If neither Ctrl nor Meta is down, it's not a Ctrl/Cmd+C
-                            return;
+                            return Some(event);
                         }
                         let now = Instant::now();
                         let is_double = guard.last_c_press.map_or(false, |prev| {
@@ -507,6 +515,8 @@ pub fn start_listener(app: tauri::AppHandle) {
                 }
                 _ => {}
             }
+            // 默认情况下让事件继续传递
+            Some(event)
         }) {
             app_error!("Windows 热键监听出错: {:?}", e);
         }
