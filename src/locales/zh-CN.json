@@ -74,6 +74,12 @@
       "modelRequestFailed": "请求失败",
       "modelSpeedEmpty": "点击上方「模型测速」查看各模型的响应时间"
     },
+    "permissions": {
+      "title": "macOS 权限助手",
+      "description": "在这里查看授权步骤，快速打开系统隐私与安全并完成拖拽授权。",
+      "open": "打开权限助手",
+      "openFailed": "打开权限助手失败"
+    },
     "basic": {
       "title": "基础设置",
       "description": "主题和其他通用设置。",
@@ -138,6 +144,31 @@
     "saved": "设置已保存",
     "loadFailed": "加载设置失败",
     "notInTauri": "当前不在 Tauri 环境"
+  },
+  "permissions": {
+    "title": "权限授权助手",
+    "description": "按照下方步骤完成 macOS 权限授予。",
+    "authorized": "已授权",
+    "macOnly": "仅支持 macOS",
+    "macOnlyDesc": "请在 Mac 上打开此窗口完成授权。",
+    "alreadyAuthorized": "已完成辅助功能授权",
+    "alreadyAuthorizedDesc": "无需再次操作，可直接使用应用。",
+    "step1": {
+      "title": "打开「隐私与安全 - 辅助功能」",
+      "desc": "点击按钮，系统会直接弹出辅助功能权限窗口。",
+      "button": "打开辅助功能权限",
+      "note": "如果未弹出，请手动打开系统设置 > 隐私与安全 > 辅助功能。"
+    },
+    "step2": {
+      "title": "备用方案：在 Finder 中显示应用",
+      "desc": "如果拖拽失败，点击按钮在 Finder 中定位 .app，再把它拖到权限窗口。",
+      "button": "在 Finder 中显示应用",
+      "note": "拖拽 .app 到系统权限窗口的列表中即可。",
+      "loading": "正在获取应用路径...",
+      "unavailable": "未获取到应用路径，可尝试直接手动打开 Finder。"
+    },
+    "openedSettings": "已打开系统权限窗口，如未授权请按步骤完成。",
+    "revealSuccess": "已在 Finder 中显示应用"
   },
   "history": {
     "title": "历史与日志",

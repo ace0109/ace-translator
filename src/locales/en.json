@@ -74,6 +74,12 @@
       "modelRequestFailed": "Request failed",
       "modelSpeedEmpty": "Run \"Benchmark Models\" to see per-model response times"
     },
+    "permissions": {
+      "title": "macOS Permission Helper",
+      "description": "Guided flow to open Privacy & Security and finish the drag-to-authorize step.",
+      "open": "Open Permission Helper",
+      "openFailed": "Failed to open permission helper"
+    },
     "basic": {
       "title": "Basic Settings",
       "description": "Theme and other general settings.",
@@ -138,6 +144,31 @@
     "saveFailed": "Save failed",
     "saved": "Settings saved",
     "notInTauri": "Not in Tauri environment"
+  },
+  "permissions": {
+    "title": "Permission Helper",
+    "description": "Follow these steps to grant macOS permissions.",
+    "authorized": "Authorized",
+    "macOnly": "macOS only",
+    "macOnlyDesc": "Open this helper on a Mac to complete authorization.",
+    "alreadyAuthorized": "Accessibility permission granted",
+    "alreadyAuthorizedDesc": "No further action is needed.",
+    "step1": {
+      "title": "Open Privacy & Security - Accessibility",
+      "desc": "Click the button to jump directly to the Accessibility permission panel.",
+      "button": "Open Accessibility Permission",
+      "note": "If nothing pops up, open System Settings > Privacy & Security > Accessibility manually."
+    },
+    "step2": {
+      "title": "Fallback: Reveal the app in Finder",
+      "desc": "If drag fails, reveal the .app in Finder, then drag it into the permission window.",
+      "button": "Show App in Finder",
+      "note": "Drag the .app into the system permission window list to grant access.",
+      "loading": "Fetching app path...",
+      "unavailable": "App path unavailable. Try opening Finder manually."
+    },
+    "openedSettings": "Opened the system permission window. Follow the steps if not authorized.",
+    "revealSuccess": "Revealed the app in Finder"
   },
   "history": {
     "title": "History & Logs",

@@ -251,6 +251,37 @@ async fn handle_double_copy(app: tauri::AppHandle) {
 pub fn start_listener(app: tauri::AppHandle) {
     app_info!("正在启动 macOS 热键监听器...");
 
+    // 如果尚未授权，弹出权限助手并跳转到系统设置，然后轮询等待授权
+    if !check_accessibility_permission() {
+        app_info!("检测到未授权辅助功能，打开权限助手并跳转系统设置");
+
+        // 打开权限助手窗口
+        if let Some(win) = app.get_webview_window("permissions") {
+            let _ = crate::commands::system::center_window_on_screen(&win);
+            let _ = win.show();
+            let _ = win.set_focus();
+        }
+
+        // 打开系统隐私与安全 - 辅助功能
+        let _ = std::process::Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+            .status();
+
+        // 后台轮询，授权后重新启动监听器
+        let app_clone = app.clone();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(3));
+            if check_accessibility_permission() {
+                app_info!("检测到辅助功能权限已授予，重新启动监听器");
+                start_listener(app_clone.clone());
+                break;
+            } else {
+                app_debug!("辅助功能权限仍未授予，等待中...");
+            }
+        });
+        return;
+    }
+
     std::thread::spawn(move || {
         app_info!("热键监听线程已启动");
         let state = Arc::new(Mutex::new(DoubleTapState::default()));
@@ -386,10 +417,6 @@ pub fn start_listener(app: tauri::AppHandle) {
                 // EventTap 创建失败，说明没有辅助功能权限
                 app_error!("CGEventTap 创建失败: {:?}", e);
                 app_error!("这通常表示应用没有辅助功能权限");
-
-                // 请求权限（弹出系统设置）
-                app_info!("正在请求辅助功能权限...");
-                let _ = prompt_accessibility_permission();
 
                 // 发送事件通知前端
                 if let Some(window) = app.get_webview_window("main") {

@@ -33,6 +33,11 @@ const routes = [
     name: "About",
     component: () => import("./components/features/AboutWindow.vue"),
   },
+  {
+    path: "/permissions",
+    name: "Permissions",
+    component: () => import("./components/features/PermissionGuide.vue"),
+  },
 ];
 
 const router = createRouter({
