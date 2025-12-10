@@ -231,7 +231,14 @@ async function downloadAndInstall() {
     showToast(t('about.update.installSuccess'), 'info')
     // Relaunch the app after a short delay
     setTimeout(async () => {
-      await relaunch()
+      try {
+        await relaunch()
+      } catch (e) {
+        console.error('重启失败', e)
+        const message = e instanceof Error ? e.message : String(e)
+        updateState.error = message
+        showToast(`${t('common.error')}: ${message}`, 'error')
+      }
     }, 1000)
   } catch (e) {
     console.error('下载更新失败', e)
