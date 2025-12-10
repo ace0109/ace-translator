@@ -490,6 +490,11 @@ const copyText = async (text: string) => {
 let unlisten: (() => void) | undefined
 let providerConfigUnlisten: (() => void) | undefined
 let focusUnlisten: (() => void) | undefined
+const handleEscKey = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') {
+    hideWindow()
+  }
+}
 
 const startTranslation = async (text: string) => {
   if (!text.trim()) return
@@ -651,6 +656,8 @@ onMounted(async () => {
       await startTranslation(sourcePreview.value)
     }
   })
+
+  window.addEventListener('keydown', handleEscKey)
 })
 
 onUnmounted(() => {
@@ -663,6 +670,7 @@ onUnmounted(() => {
   if (focusUnlisten) {
     focusUnlisten()
   }
+  window.removeEventListener('keydown', handleEscKey)
 })
 
 // Window height auto-resize
