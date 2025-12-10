@@ -25,7 +25,8 @@
           <!-- Step 1 -->
           <div class="rounded-md border bg-muted/30 p-4">
             <div class="flex items-start gap-3">
-              <div class="mt-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+              <div
+                class="mt-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
                 1
               </div>
               <div class="flex-1 space-y-2">
@@ -50,7 +51,8 @@
           <!-- Step 2 -->
           <div class="rounded-md border bg-muted/30 p-4">
             <div class="flex items-start gap-3">
-              <div class="mt-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+              <div
+                class="mt-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
                 2
               </div>
               <div class="flex-1 space-y-2">
@@ -59,7 +61,8 @@
                   {{ t('permissions.step2.desc') }}
                 </p>
                 <div class="flex flex-wrap gap-2 pt-1">
-                  <Button variant="outline" :disabled="revealing || !isMac || !isTauriEnv() || authorized" @click="revealInFinder">
+                  <Button variant="outline" :disabled="revealing || !isMac || !isTauriEnv() || authorized"
+                    @click="revealInFinder">
                     <Loader2 v-if="revealing" class="mr-2 h-4 w-4 animate-spin" />
                     <FolderOpen v-else class="mr-2 h-4 w-4" />
                     {{ t('permissions.step2.button') }}
@@ -80,7 +83,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
