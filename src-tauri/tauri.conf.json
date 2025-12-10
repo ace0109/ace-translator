@@ -72,6 +72,17 @@
         "fullscreen": false,
         "visible": false,
         "url": "index.html#/about"
+      },
+      {
+        "label": "permissions",
+        "title": "权限助手",
+        "width": 620,
+        "height": 520,
+        "resizable": false,
+        "minimizable": true,
+        "fullscreen": false,
+        "visible": false,
+        "url": "index.html#/permissions"
       }
     ],
     "security": {
@@ -81,10 +92,7 @@
   "bundle": {
     "createUpdaterArtifacts": true,
     "active": true,
-    "targets": [
-      "nsis",
-      "dmg"
-    ],
+    "targets": ["nsis", "dmg", "app"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -99,10 +107,7 @@
     },
     "windows": {
       "nsis": {
-        "languages": [
-          "SimpChinese",
-          "English"
-        ]
+        "languages": ["SimpChinese", "English"]
       }
     }
   },

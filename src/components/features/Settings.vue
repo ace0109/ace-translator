@@ -200,6 +200,19 @@
         </CardContent>
       </Card>
 
+      <!-- 权限助手（macOS） -->
+      <Card v-if="isMac">
+        <CardHeader class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>{{ t('settings.permissions.title') }}</CardTitle>
+            <CardDescription>{{ t('settings.permissions.description') }}</CardDescription>
+          </div>
+          <Button variant="outline" @click="openPermissionHelper">
+            {{ t('settings.permissions.open') }}
+          </Button>
+        </CardHeader>
+      </Card>
+
       <!-- 基础设置 -->
       <Card>
         <CardHeader class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -524,6 +537,19 @@ const getLatencyColor = (ms: number) => {
   if (ms < 1000) return 'text-green-500'
   if (ms < 2000) return 'text-yellow-500'
   return 'text-red-500'
+}
+
+const openPermissionHelper = async () => {
+  if (!isTauriEnv()) {
+    showToast(t('settings.notInTauri'), 'error')
+    return
+  }
+  try {
+    await invoke('show_permissions_window')
+  } catch (error: any) {
+    const errMsg = error?.message || String(error)
+    showToast(`${t('settings.permissions.openFailed')}：${errMsg}`, 'error')
+  }
 }
 
 

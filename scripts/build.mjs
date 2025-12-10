@@ -79,6 +79,9 @@ try {
       .replace(/-setup/, '')             // 去掉 -setup
   }
 
+  // 固定 macOS DMG 命名
+  const dmgOutputName = 'ace-translator.dmg'
+
   if (existsSync(bundleDir)) {
     // 收集 NSIS 安装包 (Windows)
     const nsisDir = resolve(bundleDir, 'nsis')
@@ -96,7 +99,7 @@ try {
     if (existsSync(dmgDir)) {
       const files = readdirSync(dmgDir).filter(f => f.endsWith('.dmg'))
       for (const file of files) {
-        const newName = simplifyName(file)
+        const newName = dmgOutputName
         copyFileSync(resolve(dmgDir, file), resolve(outputDir, newName))
         collectedFiles.push(newName)
       }
@@ -111,6 +114,8 @@ try {
         copyFileSync(resolve(macosDir, file), resolve(outputDir, newName))
         collectedFiles.push(newName)
       }
+    } else {
+      console.log('ℹ️ 未找到 macos 更新包目录（tar.gz / sig），仅收集 DMG。')
     }
   }
 

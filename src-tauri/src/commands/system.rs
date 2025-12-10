@@ -3,6 +3,8 @@ use crate::AppState;
 use enigo::Mouse;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
+#[cfg(target_os = "macos")]
+use std::process::Command;
 
 /// 翻译历史条目
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
@@ -137,6 +139,16 @@ pub async fn show_about_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// 打开权限引导窗口
+#[tauri::command]
+pub async fn show_permissions_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("permissions") {
+        window.show().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn hide_window(window: tauri::Window) -> Result<(), String> {
     window.hide().map_err(|e| e.to_string())?;
@@ -263,6 +275,67 @@ pub fn request_accessibility() -> bool {
     #[cfg(not(target_os = "macos"))]
     {
         true // 非 macOS 平台不需要此权限
+    }
+}
+
+/// 打开指定的隐私与安全面板
+#[tauri::command]
+pub fn open_privacy_panel(panel: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let uri = match panel.as_str() {
+            "accessibility" => "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+            "screen_recording" => "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenRecording",
+            "input_monitoring" => "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
+            "files" => "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
+            _ => "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+        };
+
+        Command::new("open")
+            .arg(uri)
+            .status()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("仅支持 macOS".to_string())
+    }
+}
+
+/// 获取 .app bundle 路径（用于拖拽授权）
+#[tauri::command]
+pub fn get_app_bundle_path() -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let exe_path = std::env::current_exe().map_err(|e| e.to_string())?;
+        // /Applications/App.app/Contents/MacOS/app -> ancestors nth(3) -> /Applications/App.app
+        if let Some(bundle_path) = exe_path.ancestors().nth(3) {
+            return Ok(bundle_path.to_string_lossy().to_string());
+        }
+        Err("无法定位应用路径".to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("仅支持 macOS".to_string())
+    }
+}
+
+/// 在 Finder 中显示应用（备用拖拽方式）
+#[tauri::command]
+pub fn reveal_app_in_finder() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let bundle = get_app_bundle_path()?;
+        Command::new("open")
+            .args(["-R", &bundle])
+            .status()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("仅支持 macOS".to_string())
     }
 }
 
