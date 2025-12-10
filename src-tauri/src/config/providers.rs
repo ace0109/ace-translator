@@ -8,7 +8,7 @@ pub const DEFAULT_ZHIPU_MODEL: &str = "glm-4-flash";
 
 /// 智谱 AI 配置
 pub const ZHIPU_INTERNAL_KEY: Option<&'static str> =
-    Some("2583dd1bdd274cde9c7daa189f0d5be7.pvG5Y6xmopLS2k76");
+    Some("ad075d78e20a42a3b6cb4d27153a3908.BuJ0NgD1eNUfxLyC");
 
 pub const ZHIPU_MODELS: &[ModelConfig] = &[
     ModelConfig {
@@ -16,12 +16,16 @@ pub const ZHIPU_MODELS: &[ModelConfig] = &[
         free: true,
     },
     ModelConfig {
-        id: "glm-4-flashx",
-        free: false,
-    },
-    ModelConfig {
         id: "glm-4-flash-250414",
         free: true,
+    },
+    ModelConfig {
+        id: "glm-4.5-flash",
+        free: true,
+    },
+    ModelConfig {
+        id: "glm-4-flashx",
+        free: false,
     },
 ];
 
