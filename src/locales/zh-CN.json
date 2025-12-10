@@ -60,13 +60,19 @@
       "baseUrlHintOpenAI": "用于连接 OpenAI 兼容的第三方服务",
       "saveConfig": "保存配置",
       "testConnection": "测试连接",
+      "testAllModels": "模型测速",
       "connectionSuccess": "连接成功",
       "connectionFailed": "连接失败",
       "viewRawResponse": "查看原始响应",
       "viewRequestPayload": "查看请求参数",
       "configSaved": "{provider} 配置已保存",
       "saveFailed": "保存失败",
-      "testFailed": "测试失败"
+      "testFailed": "测试失败",
+      "modelLatencyTitle": "模型响应速度",
+      "modelLatencyLegend": "绿色 <1s，黄色 1-2s，红色 >2s",
+      "testingModels": "测速中...",
+      "modelRequestFailed": "请求失败",
+      "modelSpeedEmpty": "点击上方「模型测速」查看各模型的响应时间"
     },
     "basic": {
       "title": "基础设置",

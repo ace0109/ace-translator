@@ -120,6 +120,10 @@
                 <Loader2 v-if="isTestingProvider" class="mr-2 h-4 w-4 animate-spin" />
                 {{ t('settings.providerConfig.testConnection') }}
               </Button>
+              <Button variant="outline" :disabled="isBenchmarkingModels" @click="benchmarkAllModels">
+                <Loader2 v-if="isBenchmarkingModels" class="mr-2 h-4 w-4 animate-spin" />
+                {{ t('settings.providerConfig.testAllModels') }}
+              </Button>
             </div>
 
             <!-- 测试结果 -->
@@ -150,6 +154,47 @@
                 <pre
                   class="mt-2 max-h-48 overflow-auto rounded bg-muted/40 p-2">{{ JSON.stringify(testResult.raw_response, null, 2) }}</pre>
               </details>
+            </div>
+
+            <!-- 模型测速结果 -->
+            <div class="space-y-3 rounded-md border p-3">
+              <div class="flex items-center justify-between">
+                <span class="font-medium">{{ t('settings.providerConfig.modelLatencyTitle') }}</span>
+                <span class="text-xs text-muted-foreground">{{ t('settings.providerConfig.modelLatencyLegend') }}</span>
+              </div>
+              <div v-if="isBenchmarkingModels" class="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 class="h-4 w-4 animate-spin" />
+                <span>{{ t('settings.providerConfig.testingModels') }}</span>
+              </div>
+              <div v-if="modelSpeedResults.length" class="space-y-2">
+                <div v-for="result in modelSpeedResults" :key="`${result.provider}-${result.model}`"
+                  class="flex items-center justify-between rounded-md border px-3 py-2">
+                  <div class="flex flex-col">
+                    <span class="font-medium">{{ result.model }}</span>
+                    <span v-if="!result.success" class="text-xs text-red-500">
+                      {{ t('settings.providerConfig.modelRequestFailed') }}
+                    </span>
+                    <span v-else class="text-xs text-muted-foreground">HTTP {{ result.status_code }}</span>
+                  </div>
+                  <div class="text-right">
+                    <span v-if="result.success" :class="['text-sm font-semibold', getLatencyColor(result.response_time_ms)]">
+                      {{ (result.response_time_ms / 1000).toFixed(2) }}s
+                    </span>
+                    <div v-else class="text-right">
+                      <div class="text-sm font-semibold text-red-500">
+                        {{ t('settings.providerConfig.modelRequestFailed') }}
+                      </div>
+                      <div v-if="result.error" class="text-xs text-muted-foreground max-w-[220px] truncate"
+                        :title="result.error">
+                        {{ result.error }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p v-else class="text-sm text-muted-foreground">
+                {{ t('settings.providerConfig.modelSpeedEmpty') }}
+              </p>
             </div>
           </div>
         </CardContent>
@@ -312,7 +357,9 @@ const providers = ref<ProviderInfo[]>([])
 const activeProvider = ref('zhipu')
 const isSavingProvider = ref(false)
 const isTestingProvider = ref(false)
+const isBenchmarkingModels = ref(false)
 const testResult = ref<ApiTestResponse | null>(null)
+const modelSpeedResults = ref<ApiTestResponse[]>([])
 
 const currentProvider = computed(() => {
   return providers.value.find(p => p.name === activeProvider.value)
@@ -430,6 +477,55 @@ const testCurrentProvider = async () => {
   }
 }
 
+const benchmarkAllModels = async () => {
+  if (!isTauriEnv() || !currentProvider.value) return
+
+  isBenchmarkingModels.value = true
+  modelSpeedResults.value = []
+
+  const provider = currentProvider.value
+
+  try {
+    for (const model of provider.available_models) {
+      if (provider.name !== activeProvider.value) {
+        break
+      }
+      try {
+        const result = await invoke<ApiTestResponse>('test_provider', {
+          config: {
+            provider_name: provider.name,
+            enabled: true,
+            api_key: provider.config.api_key,
+            model,
+            base_url: provider.config.base_url || null,
+          }
+        })
+        modelSpeedResults.value.push(result)
+      } catch (error: any) {
+        const errMsg = error?.message || String(error)
+        modelSpeedResults.value.push({
+          success: false,
+          status_code: 0,
+          response_time_ms: 0,
+          raw_response: null,
+          request_payload: null,
+          error: errMsg,
+          provider: provider.display_name,
+          model,
+        })
+      }
+    }
+  } finally {
+    isBenchmarkingModels.value = false
+  }
+}
+
+const getLatencyColor = (ms: number) => {
+  if (ms < 1000) return 'text-green-500'
+  if (ms < 2000) return 'text-yellow-500'
+  return 'text-red-500'
+}
+
 
 
 const loadSettings = async (): Promise<void> => {
@@ -540,6 +636,7 @@ watch(
 // 切换服务商时清除测试结果
 watch(activeProvider, () => {
   testResult.value = null
+  modelSpeedResults.value = []
 })
 
 const resetDefaults = async () => {

@@ -60,13 +60,19 @@
       "baseUrlHintOpenAI": "For connecting to OpenAI-compatible third-party services",
       "saveConfig": "Save Configuration",
       "testConnection": "Test Connection",
+      "testAllModels": "Benchmark Models",
       "connectionSuccess": "Connection successful",
       "connectionFailed": "Connection failed",
       "viewRawResponse": "View raw response",
       "viewRequestPayload": "View request payload",
       "configSaved": "{provider} configuration saved",
       "saveFailed": "Save failed",
-      "testFailed": "Test failed"
+      "testFailed": "Test failed",
+      "modelLatencyTitle": "Model Latency",
+      "modelLatencyLegend": "Green <1s, Yellow 1-2s, Red >2s",
+      "testingModels": "Benchmarking...",
+      "modelRequestFailed": "Request failed",
+      "modelSpeedEmpty": "Run \"Benchmark Models\" to see per-model response times"
     },
     "basic": {
       "title": "Basic Settings",
