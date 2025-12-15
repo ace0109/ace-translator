@@ -109,7 +109,7 @@
       "description": "Configure hotkeys for triggering translation.",
       "doubleCopy": "Double-tap Copy to Translate",
       "doubleCopyDescMac": "Press Cmd+C twice quickly to trigger translation, window appears near cursor",
-      "doubleCopyDescWin": "Press Ctrl+C twice quickly to trigger translation, window appears near cursor",
+      "doubleCopyDescWin": "Press Alt+C twice quickly to trigger translation (first press copies selection), window appears near cursor",
       "altSpace": "Hotkey to Open Window",
       "altSpaceDescMac": "Press Option+Space to show translation window at screen center",
       "altSpaceDescWin": "Press Alt+Space to show translation window at screen center",
