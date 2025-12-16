@@ -305,6 +305,7 @@ pub fn run() {
             commands::system::set_main_loading,
             commands::system::get_main_loading,
             commands::system::resize_main_window,
+            commands::system::resize_about_window,
             commands::system::cache_stats,
             commands::system::clear_cache,
             commands::system::check_accessibility,

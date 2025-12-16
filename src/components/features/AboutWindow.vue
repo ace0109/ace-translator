@@ -28,7 +28,7 @@
       </DialogContent>
     </Dialog>
 
-    <Card class="w-full min-h-screen rounded-none" :class="{ 'opacity-50': isLoading }">
+    <Card ref="aboutContainer" class="w-full rounded-none" :class="{ 'opacity-50': isLoading }">
       <CardHeader>
         <CardTitle class="text-lg">{{ t('about.title') }}</CardTitle>
         <CardDescription>{{ t('about.subtitle') }}</CardDescription>
@@ -96,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
 import { check } from '@tauri-apps/plugin-updater'
@@ -134,6 +134,44 @@ const updateState = reactive({
 
 // Store the update object for later use
 let pendingUpdate: Awaited<ReturnType<typeof check>> = null
+
+type ElementRef<T extends HTMLElement> = T | { $el?: T }
+const resolveEl = <T extends HTMLElement>(el: ElementRef<T> | null) => {
+  if (!el) return null
+  // Vue component instance may expose root element as $el
+  if (typeof el === 'object' && '$el' in el) {
+    return (el as any).$el as T
+  }
+  return el as T
+}
+
+const aboutContainer = ref<ElementRef<HTMLElement> | null>(null)
+
+// Window height auto-resize (same behavior as MainTranslator)
+let resizeTimer: number | null = null
+const updateWindowHeight = async () => {
+  if (!isTauriEnv()) return
+  await nextTick()
+  const containerEl = resolveEl(aboutContainer.value)
+  if (!containerEl) return
+
+  const contentHeight = containerEl.scrollHeight
+  const targetHeight = contentHeight + 2
+
+  try {
+    await invoke('resize_about_window', { height: targetHeight })
+  } catch (_) { }
+}
+
+const scheduleWindowResize = () => {
+  if (resizeTimer) {
+    window.clearTimeout(resizeTimer)
+  }
+  resizeTimer = window.setTimeout(() => {
+    updateWindowHeight()
+    resizeTimer = null
+  }, 20)
+}
 
 async function loadInfo() {
   try {
@@ -260,6 +298,7 @@ const init = async () => {
     showErrorDialog.value = true
   } finally {
     isLoading.value = false
+    scheduleWindowResize()
   }
 }
 
@@ -270,6 +309,7 @@ const retryInit = async () => {
 
 onMounted(() => {
   // 不要在 onMounted 时加载，等待窗口显示或聚焦时再加载
+  scheduleWindowResize()
 
   // 监听窗口显示和聚焦事件
   let hasInitialized = false
@@ -297,5 +337,16 @@ onMounted(() => {
       hasInitialized = true
     }
   })
+})
+
+watch([appInfo, updateState], () => {
+  scheduleWindowResize()
+}, { deep: true })
+
+onUnmounted(() => {
+  if (resizeTimer) {
+    window.clearTimeout(resizeTimer)
+    resizeTimer = null
+  }
 })
 </script>
