@@ -228,6 +228,41 @@ pub async fn resize_main_window(app: AppHandle, height: f64) -> Result<(), Strin
     Ok(())
 }
 
+/// 动态调整关于窗口高度
+#[tauri::command]
+pub async fn resize_about_window(app: AppHandle, height: f64) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("about") {
+        // 使用 LogicalSize 获取当前大小（逻辑像素）
+        let current_size = window
+            .inner_size()
+            .map_err(|e| e.to_string())?
+            .to_logical::<f64>(window.scale_factor().map_err(|e| e.to_string())?);
+
+        // 获取屏幕高度来限制最大高度（80%）
+        let max_height =
+            if let Some(monitor) = window.current_monitor().map_err(|e| e.to_string())? {
+                let monitor_size = monitor
+                    .size()
+                    .to_logical::<f64>(window.scale_factor().map_err(|e| e.to_string())?);
+                monitor_size.height * 0.8
+            } else {
+                800.0 // 默认最大高度
+            };
+
+        // 限制高度在最小值和最大值之间
+        let min_height = 240.0;
+        let final_height = height.max(min_height).min(max_height);
+
+        // 只有当高度变化超过 1 像素时才调整，避免抖动
+        if (current_size.height - final_height).abs() > 1.0 {
+            window
+                .set_size(tauri::LogicalSize::new(current_size.width, final_height))
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn cache_stats(state: tauri::State<'_, AppState>) -> Result<(i64, i64), String> {
     let size: i64 = sqlx::query_scalar(
