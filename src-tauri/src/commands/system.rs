@@ -334,6 +334,7 @@ pub fn open_privacy_panel(panel: String) -> Result<(), String> {
     }
     #[cfg(not(target_os = "macos"))]
     {
+        let _ = panel; // 消除未使用变量警告
         Err("仅支持 macOS".to_string())
     }
 }
