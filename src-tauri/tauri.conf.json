@@ -122,7 +122,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEIzMDQ0MTMzODI0N0Q1RDMKUldUVDFVZUNNMEVFc3hmbUJQbm9VZEM3bGppWWI1THFSOVh3UTBubHhaeXFqT093TTVzZnE2UkcK",
       "endpoints": [
-        "http://localhost:8000/translator/update/{{target}}/{{arch}}/{{current_version}}"
+        "https://nest.wangcaiyuan.com/translator/update/{{target}}/{{arch}}/{{current_version}}"
       ]
     }
   }
