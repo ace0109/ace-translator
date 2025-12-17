@@ -109,7 +109,7 @@
       "description": "配置触发翻译的快捷键。",
       "doubleCopy": "双击复制翻译",
       "doubleCopyDescMac": "快速按两次 Cmd+C 触发翻译，窗口显示在鼠标附近",
-      "doubleCopyDescWin": "快速按两次 Alt+C 触发翻译（首次会自动复制选中文本），窗口显示在鼠标附近",
+      "doubleCopyDescWin": "快速按两次 Ctrl+C 触发翻译（首次会自动复制选中文本），窗口显示在鼠标附近",
       "altSpace": "快捷键打开窗口",
       "altSpaceDescMac": "按 Option+Space 在屏幕中央显示翻译窗口",
       "altSpaceDescWin": "按 Alt+Space 在屏幕中央显示翻译窗口",

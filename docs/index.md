@@ -17,7 +17,7 @@ features:
   - title: 🤖 强大的 AI 核心
     details: 集成智谱 AI (GLM-4) 大模型，为您提供精准、流畅、自然的翻译体验，支持多语言互译。
   - title: ⚡ 极速划词翻译
-    details: 全局快捷键（macOS：快速按两次 Cmd+C；Windows：快速按两次 Alt+C）唤起悬浮窗，无需切换窗口，即刻获取翻译结果。
+    details: 全局快捷键（macOS：快速按两次 Cmd+C；Windows：快速按两次 Ctrl+C）唤起悬浮窗，无需切换窗口，即刻获取翻译结果。
   - title: 🛡️ 本地安全隐私
     details: API Key 本地加密存储，翻译历史本地数据库保存，最大程度保障您的数据安全与隐私。
   - title: 🚀 轻量级高性能
