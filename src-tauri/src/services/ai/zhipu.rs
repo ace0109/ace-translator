@@ -69,15 +69,10 @@ impl ZhipuProvider {
         // 尝试获取内置配置
         let mut api_key = config.api_key.clone();
 
-        // 如果用户 API Key 为空，检查该模型是否免费且有内置 Key
+        // 如果用户 API Key 为空，使用内置 Key
         if api_key.is_empty() {
             if let Some(internal_key) = providers::ZHIPU_INTERNAL_KEY {
-                // 查找模型配置
-                if let Some(model_config) = providers::ZHIPU_MODELS.iter().find(|m| m.id == model) {
-                    if model_config.free {
-                        api_key = internal_key.to_string();
-                    }
-                }
+                api_key = internal_key.to_string();
             }
         }
 
@@ -146,6 +141,7 @@ Text: {}"#,
             "messages": [
                 { "role": "user", "content": prompt }
             ],
+            "thinking": { "type": "disabled" },
             "stream": false
         });
 
@@ -201,6 +197,7 @@ Text: {}"#,
                 { "role": "system", "content": system_prompt },
                 { "role": "user", "content": user_prompt }
             ],
+            "thinking": { "type": "disabled" },
             "stream": false
         });
 
@@ -257,6 +254,7 @@ Text: {}"#,
             "messages": [
                 { "role": "user", "content": "Hello" }
             ],
+            "thinking": { "type": "disabled" },
             "stream": false
         });
 
@@ -338,6 +336,7 @@ Text: {}"#,
                 { "role": "system", "content": system_prompt },
                 { "role": "user", "content": user_prompt }
             ],
+            "thinking": { "type": "disabled" },
             "stream": true
         });
 
