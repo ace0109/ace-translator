@@ -67,7 +67,9 @@
 
             <!-- API Key -->
             <div v-if="currentProvider.name !== 'ollama'" class="space-y-2">
-              <Label :for="`${currentProvider.name}-apikey`">{{ t('settings.providerConfig.apiKey') }}</Label>
+              <Label :for="`${currentProvider.name}-apikey`">
+                {{ t('settings.providerConfig.apiKey') }}
+              </Label>
               <div class="flex gap-2">
                 <Input :id="`${currentProvider.name}-apikey`" v-model="currentProvider.config.api_key" type="password"
                   :placeholder="t('settings.providerConfig.apiKeyPlaceholder', { provider: currentProvider.display_name })" />
@@ -76,6 +78,11 @@
                 class="text-xs text-muted-foreground">
                 {{ t('settings.providerConfig.zhipuFlashHint') }}
               </p>
+              <a v-if="currentProvider.name === 'zhipu'"
+                class="text-xs font-semibold text-orange-500 underline underline-offset-2 hover:text-orange-400"
+                href="https://www.bigmodel.cn/glm-coding?ic=TJOZG6ZJMM" target="_blank" rel="noopener noreferrer">
+                推荐填写个人 Key，避免共用系统 Key 导致限速，影响体验。前往注册获取Api Key
+              </a>
             </div>
 
             <!-- 模型选择 -->
@@ -88,7 +95,7 @@
                 <SelectContent>
                   <SelectGroup>
                     <SelectItem v-for="model in currentProvider.available_models" :key="model" :value="model">
-                      {{ model }}
+                      {{ getModelLabel(model) }}
                     </SelectItem>
                   </SelectGroup>
                 </SelectContent>
@@ -168,28 +175,45 @@
               </div>
               <div v-if="modelSpeedResults.length" class="space-y-2">
                 <div v-for="result in modelSpeedResults" :key="`${result.provider}-${result.model}`"
-                  class="flex items-center justify-between rounded-md border px-3 py-2">
-                  <div class="flex flex-col">
-                    <span class="font-medium">{{ result.model }}</span>
-                    <span v-if="!result.success" class="text-xs text-red-500">
-                      {{ t('settings.providerConfig.modelRequestFailed') }}
-                    </span>
-                    <span v-else class="text-xs text-muted-foreground">HTTP {{ result.status_code }}</span>
-                  </div>
-                  <div class="text-right">
-                    <span v-if="result.success" :class="['text-sm font-semibold', getLatencyColor(result.response_time_ms)]">
-                      {{ (result.response_time_ms / 1000).toFixed(2) }}s
-                    </span>
-                    <div v-else class="text-right">
-                      <div class="text-sm font-semibold text-red-500">
+                  class="space-y-2 rounded-md border px-3 py-2">
+                  <div class="flex items-center justify-between">
+                    <div class="flex flex-col">
+                      <span class="font-medium">{{ result.model }}</span>
+                      <span v-if="!result.success" class="text-xs text-red-500">
                         {{ t('settings.providerConfig.modelRequestFailed') }}
-                      </div>
-                      <div v-if="result.error" class="text-xs text-muted-foreground max-w-[220px] truncate"
-                        :title="result.error">
-                        {{ result.error }}
+                      </span>
+                      <span v-else class="text-xs text-muted-foreground">HTTP {{ result.status_code }}</span>
+                    </div>
+                    <div class="text-right">
+                      <span v-if="result.success"
+                        :class="['text-sm font-semibold', getLatencyColor(result.response_time_ms)]">
+                        {{ (result.response_time_ms / 1000).toFixed(2) }}s
+                      </span>
+                      <div v-else class="text-right">
+                        <div class="text-sm font-semibold text-red-500">
+                          {{ t('settings.providerConfig.modelRequestFailed') }}
+                        </div>
+                        <div v-if="result.error" class="text-xs text-muted-foreground max-w-[220px] truncate"
+                          :title="result.error">
+                          {{ result.error }}
+                        </div>
                       </div>
                     </div>
                   </div>
+                  <details v-if="result.request_payload" class="text-xs">
+                    <summary class="cursor-pointer text-muted-foreground hover:text-foreground">
+                      {{ t('settings.providerConfig.viewRequestPayload') }}
+                    </summary>
+                    <pre
+                      class="mt-2 max-h-48 overflow-auto rounded bg-muted/40 p-2">{{ JSON.stringify(result.request_payload, null, 2) }}</pre>
+                  </details>
+                  <details v-if="result.raw_response" class="text-xs">
+                    <summary class="cursor-pointer text-muted-foreground hover:text-foreground">
+                      {{ t('settings.providerConfig.viewRawResponse') }}
+                    </summary>
+                    <pre
+                      class="mt-2 max-h-48 overflow-auto rounded bg-muted/40 p-2">{{ JSON.stringify(result.raw_response, null, 2) }}</pre>
+                  </details>
                 </div>
               </div>
               <p v-else class="text-sm text-muted-foreground">
@@ -328,7 +352,14 @@ interface ProviderInfo {
   display_name: string
   config: ProviderConfig
   available_models: string[]
+  available_model_configs: ModelConfig[]
   supports_base_url: boolean
+}
+
+interface ModelConfig {
+  id: string
+  free: boolean
+  rate_limit: number
 }
 
 interface ApiTestResponse {
@@ -386,6 +417,17 @@ const currentProviderModel = computed({
     }
   },
 })
+
+const getModelMeta = (modelId: string) => {
+  return currentProvider.value?.available_model_configs.find(model => model.id === modelId)
+}
+
+const getModelLabel = (modelId: string) => {
+  const meta = getModelMeta(modelId)
+  if (!meta) return modelId
+  const freeLabel = meta.free ? 'Free' : 'Paid'
+  return `${modelId} (${freeLabel}, Rate ${meta.rate_limit})`
+}
 
 const applyThemeClass = (theme: string) => {
   if (theme === 'dark') {

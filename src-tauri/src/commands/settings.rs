@@ -23,12 +23,13 @@ pub struct AppSettings {
 }
 
 /// 服务商信息（包括可选模型）
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 pub struct ProviderInfo {
     pub name: String,
     pub display_name: String,
     pub config: ProviderConfig,
     pub available_models: Vec<String>,
+    pub available_model_configs: Vec<providers::ModelConfig>,
     pub supports_base_url: bool,
 }
 
@@ -190,6 +191,13 @@ pub async fn get_provider_configs(state: State<'_, AppState>) -> Result<Vec<Prov
                 _ => continue,
             };
 
+        let available_model_configs = match row.provider_name.as_str() {
+            "zhipu" => providers::ZHIPU_MODELS.to_vec(),
+            "openai" => providers::OPENAI_MODELS.to_vec(),
+            "claude" => providers::CLAUDE_MODELS.to_vec(),
+            _ => Vec::new(),
+        };
+
         // fallback to default model if DB value is empty (helps fresh installs)
         let model = if row.model.is_empty() {
             default_model.clone()
@@ -215,6 +223,7 @@ pub async fn get_provider_configs(state: State<'_, AppState>) -> Result<Vec<Prov
                 base_url: row.base_url,
             },
             available_models,
+            available_model_configs,
             supports_base_url,
         });
     }
@@ -300,6 +309,7 @@ pub async fn test_provider(config: ProviderConfig) -> Result<ApiTestResponse, St
 
     Ok(response)
 }
+
 
 /// 快捷键配置
 #[derive(Debug, Serialize, Deserialize, Clone)]
