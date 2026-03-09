@@ -1,0 +1,44 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+src-tauri/target
+src-tauri/gen
+.history
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+.history
+.claude
+
+# VitePress
+docs/.vitepress/cache
+docs/.vitepress/dist
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Local Tauri signing materials
+.tauri/*.key
+.tauri/*.key.pub
