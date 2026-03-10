@@ -1,0 +1,65 @@
+name: Bug Report
+description: Report a reproducible problem in Ace Translator
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please include enough detail to reproduce it reliably.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+      placeholder: Describe the problem clearly.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: List the exact steps in order.
+      placeholder: |
+        1. Open the app
+        2. Configure provider X
+        3. Trigger translation with ...
+        4. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      placeholder: What should have happened instead?
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS
+        - Windows
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App Version
+      placeholder: e.g. 1.2.0
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or Screenshots
+      description: Paste relevant logs, stack traces, or screenshots if available.
+      render: shell
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment Details
+      description: Include provider used, OS version, and any relevant local setup.
+      placeholder: macOS 15.x, OpenAI-compatible endpoint, Ollama 0.x, etc.
