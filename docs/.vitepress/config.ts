@@ -7,5 +7,8 @@ export default defineConfig({
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
     logo: '/logo.png',
+    socialLinks: [
+      { icon: 'github', link: 'https://github.com/ace0109/ace-translator' },
+    ],
   }
 })

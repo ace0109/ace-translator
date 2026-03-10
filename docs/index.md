@@ -4,7 +4,7 @@ layout: home
 hero:
   name: "Ace Translator"
   text: "您的智能 AI 翻译助手"
-  tagline: 基于 Tauri 2.0 与 Zhipu AI (GLM-4) 构建，轻量、安全、高效。
+  tagline: 基于 Tauri 2.0 与 Zhipu AI (GLM-4) 构建，轻量、安全、高效，现已在 GitHub 开源。
   actions:
     - theme: brand
       text: 下载 Windows 版
@@ -12,6 +12,9 @@ hero:
     - theme: alt
       text: 下载 macOS 版
       link: https://nest.wangcaiyuan.com/translator/download?platform=macos
+    - theme: alt
+      text: GitHub 开源仓库
+      link: https://github.com/ace0109/ace-translator
 
 features:
   - title: 🤖 强大的 AI 核心
@@ -23,3 +26,8 @@ features:
   - title: 🚀 轻量级高性能
     details: 基于 Rust 和 Tauri 2.0 构建，资源占用极低，运行速度极快，为您提供原生般的流畅体验。
 ---
+
+Ace Translator 已在 GitHub 开源，仓库地址：
+[https://github.com/ace0109/ace-translator](https://github.com/ace0109/ace-translator)
+
+您可以在仓库中查看源码、提交 Issue、参与贡献，或直接前往 Releases 页面获取最新版本。
