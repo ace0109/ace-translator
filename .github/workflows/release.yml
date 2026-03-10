@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: Release (${{ matrix.name }})
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Universal
+            platform: macos-latest
+            rustTargets: aarch64-apple-darwin,x86_64-apple-darwin
+            args: --target universal-apple-darwin --bundles dmg
+          - name: Windows x64
+            platform: windows-latest
+            rustTargets: ''
+            args: --target x86_64-pc-windows-msvc --bundles nsis
+          - name: Linux x64
+            platform: ubuntu-22.04
+            rustTargets: ''
+            args: --bundles deb,appimage
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Verify release tag matches app version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          app_version=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          expected="v${app_version}"
+
+          if [ "${GITHUB_REF_NAME}" != "${expected}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match app version ${expected}"
+            exit 1
+          fi
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rustTargets }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libgtk-3-dev \
+            libsoup-3.0-dev \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libfuse2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and upload release assets
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tauriScript: pnpm tauri
+          tagName: v__VERSION__
+          releaseName: Ace Translator v__VERSION__
+          releaseBody: |
+            Installers built by GitHub Actions.
+
+            See the generated release notes below for the full change list.
+          releaseDraft: true
+          prerelease: false
+          generateReleaseNotes: true
+          retryAttempts: 2
+          args: ${{ matrix.args }}
