@@ -42,6 +42,7 @@ export function useStreamingTranslation(
   const initListener = async () => {
     unlisten = await listen('translation-stream', (event: any) => {
       const streamEvent = event.payload as StreamEvent
+      
       // Only process events that match the current active request ID
       if (streamEvent.data.request_id !== currentRequestId.value) {
         return

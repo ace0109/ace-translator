@@ -11,9 +11,6 @@ node_modules
 dist
 dist-ssr
 *.local
-src-tauri/target
-src-tauri/gen
-.history
 
 # Editor directories and files
 .vscode/*
@@ -29,16 +26,10 @@ src-tauri/gen
 
 .history
 .claude
+.env.development
+.tauri/*.key
+.tauri/*.key.pub
 
 # VitePress
 docs/.vitepress/cache
 docs/.vitepress/dist
-
-# Local environment files
-.env
-.env.*
-!.env.example
-
-# Local Tauri signing materials
-.tauri/*.key
-.tauri/*.key.pub

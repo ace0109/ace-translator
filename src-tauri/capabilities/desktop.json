@@ -6,9 +6,11 @@
     "linux"
   ],
   "windows": [
+    "main",
     "about"
   ],
   "permissions": [
-    "opener:default"
+    "updater:default",
+    "process:default"
   ]
 }

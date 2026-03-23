@@ -1,5 +1,6 @@
 <template>
   <div class="flex min-h-screen items-center justify-center bg-background text-foreground">
+    <!-- 全屏 Loading -->
     <div v-if="isLoading" class="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
       <div class="flex flex-col items-center gap-4">
         <Loader2 class="h-8 w-8 animate-spin text-primary" />
@@ -7,6 +8,7 @@
       </div>
     </div>
 
+    <!-- 配置加载失败弹窗 -->
     <Dialog v-model:open="showErrorDialog">
       <DialogContent class="max-w-md">
         <DialogHeader>
@@ -45,21 +47,48 @@
           </Badge>
         </div>
 
-        <div class="space-y-3 border-t pt-2">
-          <div>
-            <p class="text-sm font-medium">{{ t('about.links.title') }}</p>
-            <p class="mt-1 text-xs text-muted-foreground">{{ t('about.links.description') }}</p>
-          </div>
-          <div class="flex flex-col gap-2">
-            <Button class="w-full" @click="openRepository">
-              <Github class="mr-2 h-4 w-4" />
-              {{ t('about.links.openRepository') }}
+        <!-- Check for updates -->
+        <div class="pt-2 border-t">
+          <Button class="w-full" :disabled="updateState.checking" @click="checkForUpdates">
+            <Loader2 v-if="updateState.checking" class="mr-2 h-4 w-4 animate-spin" />
+            <RefreshCw v-else class="mr-2 h-4 w-4" />
+            {{ updateState.checking ? t('about.update.checking') : t('about.update.checkForUpdates') }}
+          </Button>
+
+          <!-- Update available -->
+          <div v-if="updateState.available" class="mt-3 space-y-2">
+            <div class="flex items-center justify-between text-sm">
+              <span class="text-muted-foreground">{{ t('about.update.newVersion') }}</span>
+              <Badge variant="default">{{ updateState.version }}</Badge>
+            </div>
+            <p v-if="updateState.notes" class="text-xs text-muted-foreground whitespace-pre-line">
+              {{ updateState.notes }}
+            </p>
+            <Button class="w-full" :disabled="updateState.downloading" @click="downloadAndInstall">
+              <Loader2 v-if="updateState.downloading" class="mr-2 h-4 w-4 animate-spin" />
+              <Download v-else class="mr-2 h-4 w-4" />
+              <span v-if="updateState.downloading && updateState.progress > 0">
+                {{ t('about.update.downloading') }} {{ updateState.progress }}%
+              </span>
+              <span v-else-if="updateState.downloading">
+                {{ t('about.update.downloading') }}
+              </span>
+              <span v-else>
+                {{ t('about.update.downloadAndInstall') }}
+              </span>
             </Button>
-            <Button class="w-full" variant="outline" @click="openReleases">
-              <ExternalLink class="mr-2 h-4 w-4" />
-              {{ t('about.links.openReleases') }}
-            </Button>
           </div>
+
+          <!-- No update available -->
+          <p v-else-if="updateState.checked && !updateState.available"
+            class="mt-2 text-xs text-center text-muted-foreground">
+            {{ t('about.update.upToDate') }}
+          </p>
+
+          <!-- Error message -->
+          <p v-if="updateState.error" class="mt-2 text-xs text-center text-destructive">
+            {{ updateState.error }}
+          </p>
         </div>
       </CardContent>
     </Card>
@@ -70,18 +99,17 @@
 import { reactive, ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { invoke } from '@tauri-apps/api/core'
-import { openUrl } from '@tauri-apps/plugin-opener'
+import { check } from '@tauri-apps/plugin-updater'
+import { relaunch } from '@tauri-apps/plugin-process'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { showToast } from '@/lib/toast'
 import { isTauriEnv } from '@/utils/env'
-import { ExternalLink, Github, Loader2 } from 'lucide-vue-next'
+import { Loader2, RefreshCw, Download } from 'lucide-vue-next'
 
 const { t } = useI18n()
-const GITHUB_REPOSITORY_URL = 'https://github.com/ace0109/ace-translator'
-const GITHUB_RELEASES_URL = `${GITHUB_REPOSITORY_URL}/releases`
 
 const tapCount = ref(0)
 const appInfo = reactive({
@@ -91,6 +119,21 @@ const appInfo = reactive({
 const isLoading = ref(false)
 const showErrorDialog = ref(false)
 const errorMessage = ref('')
+let hasInitialized = false
+
+const updateState = reactive({
+  checking: false,
+  checked: false,
+  available: false,
+  downloading: false,
+  version: '',
+  notes: '',
+  progress: 0,
+  error: '',
+})
+
+// Store the update object for later use
+let pendingUpdate: Awaited<ReturnType<typeof check>> = null
 
 type ElementRef<T extends HTMLElement> = T | { $el?: T }
 const resolveEl = <T extends HTMLElement>(el: ElementRef<T> | null) => {
@@ -150,33 +193,97 @@ async function enableDevMode() {
   }
 }
 
-async function openExternal(url: string) {
-  try {
-    if (isTauriEnv()) {
-      await openUrl(url)
-      return
-    }
-    window.open(url, '_blank', 'noopener,noreferrer')
-  } catch (e) {
-    console.error('打开外部链接失败', e)
-    showToast(t('about.links.openFailed'), 'error')
-  }
-}
-
-function openRepository() {
-  return openExternal(GITHUB_REPOSITORY_URL)
-}
-
-function openReleases() {
-  return openExternal(GITHUB_RELEASES_URL)
-}
-
 function onVersionTap() {
   if (appInfo.devMode) return
   tapCount.value += 1
   if (tapCount.value >= 7) {
     tapCount.value = 0
     enableDevMode()
+  }
+}
+
+async function checkForUpdates() {
+  updateState.checking = true
+  updateState.checked = false
+  updateState.available = false
+  updateState.error = ''
+  updateState.version = ''
+  updateState.notes = ''
+  pendingUpdate = null
+
+  try {
+    const update = await check()
+    updateState.checked = true
+
+    if (update) {
+      updateState.available = true
+      updateState.version = update.version
+      updateState.notes = update.body || ''
+      pendingUpdate = update
+      showToast(t('about.update.foundUpdate', { version: update.version }), 'info')
+    } else {
+      showToast(t('about.update.upToDate'), 'info')
+    }
+  } catch (e) {
+    console.error('检查更新失败', e)
+    updateState.error = e instanceof Error ? e.message : String(e)
+    showToast(t('about.update.checkFailed'), 'error')
+  } finally {
+    updateState.checking = false
+  }
+}
+
+async function downloadAndInstall() {
+  if (!pendingUpdate) {
+    showToast(t('about.update.noUpdate'), 'error')
+    return
+  }
+
+  updateState.downloading = true
+  updateState.progress = 0
+  updateState.error = ''
+
+  try {
+    let downloaded = 0
+    let contentLength = 0
+
+    await pendingUpdate.downloadAndInstall((event) => {
+      switch (event.event) {
+        case 'Started':
+          contentLength = event.data.contentLength ?? 0
+          console.log(`开始下载，总大小: ${contentLength} 字节`)
+          break
+        case 'Progress':
+          downloaded += event.data.chunkLength
+          if (contentLength > 0) {
+            updateState.progress = Math.round((downloaded / contentLength) * 100)
+          }
+          break
+        case 'Finished':
+          console.log('下载完成')
+          updateState.progress = 100
+          break
+      }
+    })
+
+    showToast(t('about.update.installSuccess'), 'info')
+    // Relaunch the app after a short delay
+    setTimeout(async () => {
+      try {
+        await relaunch()
+      } catch (e) {
+        console.error('重启失败', e)
+        const message = e instanceof Error ? e.message : String(e)
+        updateState.error = message
+        showToast(`${t('common.error')}: ${message}`, 'error')
+      }
+    }, 1000)
+  } catch (e) {
+    console.error('下载更新失败', e)
+    updateState.error = e instanceof Error ? e.message : String(e)
+    showToast(t('about.update.downloadFailed'), 'error')
+  } finally {
+    updateState.downloading = false
   }
 }
 
@@ -232,7 +339,7 @@ onMounted(() => {
   })
 })
 
-watch(appInfo, () => {
+watch([appInfo, updateState], () => {
   scheduleWindowResize()
 }, { deep: true })
 

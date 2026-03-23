@@ -51,6 +51,20 @@
           <Label class="text-[14px] uppercase tracking-wide text-muted-foreground">
             {{ t('translator.original') }}
           </Label>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="h-7 px-2 text-xs"
+            :disabled="!sourcePreview.trim()"
+            @click="toggleSourceSpeechPlayback"
+          >
+            <Loader2 v-if="speechLoadingKey === SOURCE_SPEECH_KEY" class="h-4 w-4 animate-spin" />
+            <Square v-else-if="speakingKey === SOURCE_SPEECH_KEY" class="h-4 w-4" />
+            <Volume2 v-else class="h-4 w-4" />
+            <span class="ml-1">
+              {{ speakingKey === SOURCE_SPEECH_KEY ? t('translator.stopAudio') : t('translator.playAudio') }}
+            </span>
+          </Button>
         </div>
         <Textarea v-model="sourcePreview" ref="sourceTextarea" :placeholder="t('translator.inputPlaceholder')"
           class="min-h-20 max-h-80 resize-none bg-background/80" @input="autoResizeTextarea"
@@ -84,9 +98,16 @@
                 </div>
               </div>
               <div class="flex items-center gap-2">
-                <Badge variant="outline" class="text-[10px] font-medium">
-                  {{ provider.config.base_url ? 'Custom' : 'Default' }}
-                </Badge>
+                <Button v-if="getProviderCardState(provider).success && !getProviderCardState(provider).loading"
+                  variant="ghost" size="sm" class="h-8 px-2 text-xs"
+                  @click="toggleSpeechPlayback(provider)">
+                  <Loader2 v-if="speechLoadingKey === providerKey(provider)" class="h-4 w-4 animate-spin" />
+                  <Square v-else-if="speakingKey === providerKey(provider)" class="h-4 w-4" />
+                  <Volume2 v-else class="h-4 w-4" />
+                  <span class="ml-1">
+                    {{ speakingKey === providerKey(provider) ? t('translator.stopAudio') : t('translator.playAudio') }}
+                  </span>
+                </Button>
                 <Button v-if="getProviderCardState(provider).success && !getProviderCardState(provider).loading"
                   variant="ghost" size="sm" class="h-8 px-2 text-xs"
                   @click="copyText(getProviderCardState(provider).translation)" :title="t('common.copy')">
@@ -147,8 +168,9 @@ import LoadingSpinner from '../common/LoadingSpinner.vue'
 import { useSettingsStore } from '@/stores/settings'
 import { languageOptions } from '@/constants/languages'
 import { showToast } from '@/lib/toast'
+import { parseBackendError } from '@/utils/backendError'
 import { useStreamingTranslation } from '@/composables/useStreamingTranslation'
-import { Pin, PinOff, Settings, X, Copy, ArrowRight, Loader2 } from 'lucide-vue-next'
+import { Pin, PinOff, Settings, X, Copy, ArrowRight, Loader2, Volume2, Square } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -160,6 +182,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { isTauriEnv } from '@/utils/env'
 
 const { t } = useI18n()
+const SOURCE_SPEECH_KEY = 'source-original'
 
 // 定义 ProviderInfo 接口，与 Rust 后端返回的结构对应
 interface ProviderInfo {
@@ -186,8 +209,11 @@ interface ProviderTranslationResult {
   error: string | null
 }
 
-interface MultiProviderResult {
-  results: ProviderTranslationResult[]
+interface SpeechSynthesisResult {
+  provider: string
+  model: string
+  audio_format: string
+  audio_base64: string
 }
 
 type ElementRef<T extends HTMLElement> = T | { $el?: T }
@@ -203,6 +229,10 @@ const pinned = ref(false)
 const currentRequestId = ref(0)
 const enabledProviders = ref<ProviderInfo[]>([])
 const isLoading = ref(false)
+const speechLoadingKey = ref<string | null>(null)
+const speakingKey = ref<string | null>(null)
+let currentAudio: HTMLAudioElement | null = null
+let speechRequestSeq = 0
 let hasInitialized = false
 
 // 存储每个 provider 翻译内容容器的 ref，用于流式渲染时自动滚动
@@ -237,10 +267,28 @@ const targetLanguageOptions = computed(() => {
   return languageOptions.filter(opt => opt.value !== 'auto')
 })
 
+const translationErrorMessage = (error: unknown) => {
+  const parsed = parseBackendError(error)
+  switch (parsed.code) {
+    case 'NO_ACTIVE_PROVIDER':
+      showApiKeyPrompt.value = true
+      return t('translator.noProviderDesc')
+    case 'INVALID_PROVIDER_CONFIG':
+      return t('translator.invalidProviderConfig')
+    case 'LANGUAGE_DETECTION_FAILED':
+      return `${t('translator.languageDetectionFailed')}${parsed.message ? `：${parsed.message}` : ''}`
+    case 'TRANSLATION_CANCELLED':
+      return t('translator.requestCancelled')
+    default:
+      return parsed.message || parsed.raw
+  }
+}
+
 // 用户手动选择目标语言时触发重新翻译
 const onTargetLangChange = async (newTargetLang: any) => {
   if (typeof newTargetLang !== 'string' || !newTargetLang) return
   if (!sourcePreview.value.trim() || !detectedLang.value) return
+  stopSpeechPlayback()
 
   // 取消当前进行中的翻译
   if (streamingLoading.value) {
@@ -265,8 +313,7 @@ const onTargetLangChange = async (newTargetLang: any) => {
   let activeProviders: ProviderInfo[] = []
   try {
     const allProviders = await invoke<ProviderInfo[]>('get_provider_configs')
-    const zhipuOnly = allProviders.filter(p => p.name === 'zhipu')
-    activeProviders = zhipuOnly
+    activeProviders = allProviders
       .filter(p => p.config.enabled)
       .map(applyDefaultModel)
     enabledProviders.value = activeProviders
@@ -288,18 +335,15 @@ const onTargetLangChange = async (newTargetLang: any) => {
   }
 
   try {
-    const providerNames = activeProviders.map(p => p.name)
-    await invoke('translate_with_specified_langs', {
+    await invoke('translate_active_provider_with_specified_langs_stream', {
       text: sourcePreview.value,
       sourceLang: detectedLang.value,
       targetLang: newTargetLang,
       requestId: now,
-      providers: providerNames,
     })
   } catch (error: any) {
     if (currentRequestId.value !== now) return
-    const errMsg = error?.message || String(error)
-    showToast(`${t('translator.translationFailed')}：${errMsg}`, 'error')
+    showToast(`${t('translator.translationFailed')}：${translationErrorMessage(error)}`, 'error')
     try {
       await invoke('set_main_loading', { loading: false })
     } catch (_) { }
@@ -415,8 +459,7 @@ const loadEnabledProviders = async (): Promise<void> => {
   if (!isTauriEnv()) return
   try {
     const allProviders = await invoke<ProviderInfo[]>('get_provider_configs')
-    const zhipuOnly = allProviders.filter((p) => p.name === 'zhipu')
-    enabledProviders.value = zhipuOnly
+    enabledProviders.value = allProviders
       .filter((p) => p.config.enabled)
       .map(applyDefaultModel)
     await nextTick()
@@ -487,6 +530,94 @@ const copyText = async (text: string) => {
   }
 }
 
+const resolveAudioMime = (format: string) => {
+  const normalized = format.trim().toLowerCase()
+  if (normalized === 'wav') return 'audio/wav'
+  if (normalized === 'mp3') return 'audio/mpeg'
+  if (normalized === 'ogg') return 'audio/ogg'
+  if (normalized === 'flac') return 'audio/flac'
+  return ''
+}
+
+const stopSpeechPlayback = () => {
+  speechRequestSeq += 1
+  speechLoadingKey.value = null
+  if (currentAudio) {
+    currentAudio.pause()
+    currentAudio.currentTime = 0
+    currentAudio = null
+  }
+  speakingKey.value = null
+}
+
+const toggleSpeechPlaybackByText = async (key: string, text: string) => {
+  if (speakingKey.value === key || speechLoadingKey.value === key) {
+    stopSpeechPlayback()
+    return
+  }
+
+  const finalText = text.trim()
+  if (!finalText) return
+
+  stopSpeechPlayback()
+
+  const seq = speechRequestSeq + 1
+  speechRequestSeq = seq
+  speechLoadingKey.value = key
+
+  try {
+    const result = await invoke<SpeechSynthesisResult>('synthesize_speech', { text: finalText })
+    if (speechRequestSeq !== seq) return
+
+    const mime = resolveAudioMime(result.audio_format || 'wav')
+    if (!mime) {
+      showToast(t('translator.unsupportedAudioFormat', { format: result.audio_format || 'unknown' }), 'error')
+      return
+    }
+
+    const audio = new Audio(`data:${mime};base64,${result.audio_base64}`)
+    currentAudio = audio
+    speakingKey.value = key
+
+    audio.onended = () => {
+      if (currentAudio === audio) {
+        currentAudio = null
+      }
+      if (speakingKey.value === key) {
+        speakingKey.value = null
+      }
+    }
+    audio.onerror = () => {
+      if (currentAudio === audio) {
+        currentAudio = null
+      }
+      if (speakingKey.value === key) {
+        speakingKey.value = null
+      }
+      showToast(t('translator.audioPlaybackFailed'), 'error')
+    }
+
+    await audio.play()
+  } catch (error: unknown) {
+    const parsed = parseBackendError(error)
+    showToast(`${t('translator.speechSynthesisFailed')}：${parsed.message || parsed.raw}`, 'error')
+  } finally {
+    if (speechRequestSeq === seq) {
+      speechLoadingKey.value = null
+    }
+  }
+}
+
+const toggleSpeechPlayback = async (provider: ProviderInfo) => {
+  const key = providerKey(provider)
+  const text = getProviderCardState(provider).translation.trim()
+  await toggleSpeechPlaybackByText(key, text)
+}
+
+const toggleSourceSpeechPlayback = async () => {
+  await toggleSpeechPlaybackByText(SOURCE_SPEECH_KEY, sourcePreview.value)
+}
+
 let unlisten: (() => void) | undefined
 let providerConfigUnlisten: (() => void) | undefined
 let focusUnlisten: (() => void) | undefined
@@ -498,6 +629,7 @@ const handleEscKey = (event: KeyboardEvent) => {
 
 const startTranslation = async (text: string) => {
   if (!text.trim()) return
+  stopSpeechPlayback()
 
   if (streamingLoading.value) { // Use streamingLoading to check for ongoing streaming translations
     // 取消当前进行中的翻译
@@ -530,8 +662,7 @@ const startTranslation = async (text: string) => {
   let activeProviders: ProviderInfo[] = []
   try {
     const allProviders = await invoke<ProviderInfo[]>('get_provider_configs')
-    const zhipuOnly = allProviders.filter(p => p.name === 'zhipu')
-    activeProviders = zhipuOnly
+    activeProviders = allProviders
       .filter(p => p.config.enabled)
       .map(applyDefaultModel)
     enabledProviders.value = activeProviders
@@ -556,16 +687,12 @@ const startTranslation = async (text: string) => {
   try {
     // 使用流式翻译
     if (useStreaming.value) {
-      // Call the new translate_multi_stream_individual command
-      // This command will trigger parallel streaming translations for multiple providers,
-      // and update the frontend via the event system.
-      const providerNames = activeProviders.map(p => p.name)
-      const langResult = await invoke<{ detected_lang: string; target_lang: string }>('translate_multi_stream_individual', {
+      // 调用流式翻译命令，结果通过事件流持续回传
+      const langResult = await invoke<{ detected_lang: string; target_lang: string }>('translate_active_provider_stream', {
         text: text,
         primaryTarget: settingsStore.primaryTarget,
         secondaryTarget: settingsStore.secondaryTarget,
         requestId: now,
-        providers: providerNames, // Pass the names of enabled providers
       })
 
       // 立即更新语言检测结果（不等流式翻译完成）
@@ -575,7 +702,7 @@ const startTranslation = async (text: string) => {
       }
     } else {
       // Use traditional translation
-      const result = await invoke<MultiProviderResult>('translate_multi', {
+      const result = await invoke<ProviderTranslationResult>('translate_active_provider', {
         text: text,
         primaryTarget: settingsStore.primaryTarget,
         secondaryTarget: settingsStore.secondaryTarget,
@@ -587,7 +714,7 @@ const startTranslation = async (text: string) => {
         return
       }
 
-      translationResults.value = result.results
+      translationResults.value = [result]
     }
     // Language detection will now be handled by events received in useStreamingTranslation
     // and updated to detectedLang.value and targetLang.value accordingly.
@@ -598,14 +725,7 @@ const startTranslation = async (text: string) => {
     if (currentRequestId.value !== now) {
       return
     }
-    const errMsg = error?.message || String(error)
-
-    // This check should now be handled when fetching `enabledProviders`, so it might not be needed here.
-    if (errMsg.includes('没有已启用的服务商')) {
-      showApiKeyPrompt.value = true
-    } else {
-      showToast(`${t('translator.translationFailed')}：${errMsg}`, 'error')
-    }
+    showToast(`${t('translator.translationFailed')}：${translationErrorMessage(error)}`, 'error')
     try {
       await invoke('set_main_loading', { loading: false })
     } catch (_) { }
@@ -661,6 +781,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  stopSpeechPlayback()
   if (unlisten) {
     unlisten()
   }

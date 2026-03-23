@@ -1,82 +1,56 @@
 # Ace Translator
 
-Ace Translator is a Tauri + Vue desktop translator focused on fast keyboard-driven workflows and multi-provider AI translation.
+Ace Translator 是一个基于 Tauri + Vue 3 的桌面 AI 翻译工具，面向高频文本翻译场景，支持多服务商接入、流式翻译与语音播放。
 
-## Highlights
+## 核心能力
 
-- Desktop app built with `Tauri 2`, `Vue 3`, and `TypeScript`
-- Multiple providers: `Zhipu`, `OpenAI`, `Claude`, and `Ollama`
-- Global shortcuts for quick translation
-- Local history, cache management, and app logs
-- No embedded API keys or private update infrastructure in this open-source branch
+- OpenAI 协议统一接入：支持 OpenAI 兼容接口服务商与自定义服务商。
+- 预置服务商：智谱、OpenAI、DeepSeek、小米 MiMo、MiniMax、Moonshot、Ollama。
+- 单服务商启用：翻译服务商采用单选启用策略，避免配置冲突。
+- 独立 TTS：语音服务与翻译服务解耦，可单独配置 TTS（当前预置小米 TTS）。
+- 结果播放：支持原文和译文一键语音播放。
+- 本地语言检测：优先使用本地检测（whatlang）降低额外网络请求延迟。
+- 数据安全：API Key 本地加密存储，翻译历史保存在本地 SQLite。
 
-## Security Notes
+## 技术栈
 
-- This branch does not include any shared API credentials.
-- Local development secrets should stay in untracked `.env.*` files.
-- Tauri signing keys must be provided through environment variables if you add your own signed release workflow later.
+### 前端
 
-## Development
+- Vue 3 + TypeScript
+- Vite
+- Pinia
+- Vue Router
+- Tailwind CSS
+
+### 后端
+
+- Tauri 2
+- Rust + Tokio
+- SQLx (SQLite)
+- Reqwest
+
+## 本地开发
 
 ```bash
 pnpm install
 pnpm tauri dev
 ```
 
-Frontend only:
-
-```bash
-pnpm dev
-pnpm build
-```
-
-Rust checks:
-
-```bash
-cd src-tauri
-cargo check
-```
-
-## Configuration
-
-1. Copy `.env.example` to a local `.env.development` or other untracked `.env.*` file if needed.
-2. Configure at least one AI provider in the app settings.
-3. For cloud providers, use your own API key.
-4. For `Ollama`, point the base URL at your local or self-hosted instance.
-
-## Build
-
-Standard build:
+## 构建
 
 ```bash
 pnpm tauri build
 ```
 
-Helper scripts:
+按平台构建可参考 Tauri 官方文档配置对应 target 与签名环境变量。
 
-```bash
-pnpm tauri:build:mac
-pnpm tauri:build:win
-```
+## 配置说明
 
-If you later enable signed updater artifacts for your own distribution, inject these values externally instead of committing them:
+- 翻译服务商：设置中启用一个翻译服务商，并填写 `API Key / model / base_url`。
+- 语音服务商：设置中启用一个语音服务商，并填写 `API Key / model / base_url / voice / format`。
+- 自定义服务商：只要支持 OpenAI 兼容协议，即可新增并使用。
 
-```bash
-export TAURI_SIGNING_PRIVATE_KEY="..."
-export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="..."
-```
+## 开源与贡献
 
-## macOS Permissions
-
-On macOS, the app may request Accessibility permission so global shortcuts can work. If the system blocks it:
-
-1. Open `System Settings > Privacy & Security > Accessibility`
-2. Add Ace Translator
-3. Enable permission for the app
-
-## Open-Source Release Flow
-
-- Source code: [GitHub Repository](https://github.com/ace0109/ace-translator)
-- Releases: [GitHub Releases](https://github.com/ace0109/ace-translator/releases)
-
-This branch intentionally removes private deployment files, signing material, and vendor credentials so it can be published safely.
+- GitHub: https://github.com/ace0109/ace-translator
+- 欢迎提交 Issue 和 PR，一起改进产品体验。

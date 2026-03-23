@@ -51,6 +51,7 @@ pub struct ZhipuProvider {
     client: Client,
     api_key: String,
     model: String,
+    base_url: String,
 }
 
 impl ZhipuProvider {
@@ -66,13 +67,30 @@ impl ZhipuProvider {
             config.model.clone()
         };
 
+        // 尝试获取内置配置
+        let mut api_key = config.api_key.clone();
+
+        // 如果用户 API Key 为空，使用内置 Key
+        if api_key.is_empty() {
+            if let Some(internal_key) = providers::ZHIPU_INTERNAL_KEY {
+                api_key = internal_key.to_string();
+            }
+        }
+
         Self {
             client,
-            api_key: config.api_key.clone(),
+            api_key,
             model,
+            base_url: config
+                .base_url
+                .clone()
+                .unwrap_or_else(|| API_URL.to_string()),
         }
     }
 
+    /// 检查是否应该使用内置 Key（即当前 Key 不为空，或者是内置 Key 允许的模型）
+    /// 这个辅助方法主要用于在 translate 等方法中做最后的校验：
+    /// 如果 self.api_key 为空，说明用户没填且模型也不支持内置 Key，此时应该报错。
     fn has_valid_key(&self) -> bool {
         !self.api_key.is_empty()
     }
@@ -81,6 +99,7 @@ impl ZhipuProvider {
         format!(
             r#"Translate the following text from {source} to {target}.
     Do not output any explanations or JSON, just the translated text.
+    
     Text:
     {text}"#,
             source = request.source_lang,
@@ -133,7 +152,7 @@ Text: {}"#,
 
         let response = self
             .client
-            .post(API_URL)
+            .post(&self.base_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .json(&payload)
@@ -189,7 +208,7 @@ Text: {}"#,
 
         let response = self
             .client
-            .post(API_URL)
+            .post(&self.base_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .json(&payload)
@@ -247,7 +266,7 @@ Text: {}"#,
         let start = Instant::now();
         let result = self
             .client
-            .post(API_URL)
+            .post(&self.base_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .json(&payload)
@@ -328,7 +347,7 @@ Text: {}"#,
 
         let response = self
             .client
-            .post(API_URL)
+            .post(&self.base_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .json(&payload)
