@@ -1,3 +1,4 @@
+use crate::config::providers;
 use sqlx::{migrate::MigrateDatabase, sqlite::SqlitePoolOptions, Sqlite, SqlitePool};
 use std::fs;
 use tauri::{AppHandle, Manager};
@@ -36,12 +37,10 @@ pub async fn initialize_db(app: &AppHandle) -> Result<SqlitePool, String> {
 
     if !db_exists {
         crate::app_info!("[DB] 正在创建数据库...");
-        Sqlite::create_database(&db_url)
-            .await
-            .map_err(|e| {
-                crate::app_error!("[DB] 创建数据库失败: {}", e);
-                e.to_string()
-            })?;
+        Sqlite::create_database(&db_url).await.map_err(|e| {
+            crate::app_error!("[DB] 创建数据库失败: {}", e);
+            e.to_string()
+        })?;
         crate::app_info!("[DB] 数据库创建成功");
     }
 
@@ -144,27 +143,212 @@ pub async fn initialize_db(app: &AppHandle) -> Result<SqlitePool, String> {
     })?;
     crate::app_info!("[DB] provider_configs 表创建成功");
 
-    // 8. 初始化默认服务商配置（如果不存在）
+    // 7.1 创建语音服务商配置表
+    crate::app_info!("[DB] 正在创建 speech_provider_configs 表...");
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS speech_provider_configs (
+            provider_name TEXT PRIMARY KEY,
+            enabled INTEGER NOT NULL DEFAULT 0,
+            api_key TEXT NOT NULL DEFAULT '',
+            model TEXT NOT NULL DEFAULT '',
+            base_url TEXT,
+            voice TEXT NOT NULL DEFAULT '',
+            audio_format TEXT NOT NULL DEFAULT 'wav',
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        crate::app_error!("[DB] 创建 speech_provider_configs 表失败: {}", e);
+        e.to_string()
+    })?;
+    crate::app_info!("[DB] speech_provider_configs 表创建成功");
+
+    // 8. 初始化预置服务商配置（如果不存在）
     crate::app_info!("[DB] 正在初始化服务商配置...");
-    let providers = ["zhipu", "openai", "claude", "ollama"];
-    for provider in providers {
-        let enabled = if provider == "zhipu" { 1 } else { 0 };
+    for preset in providers::PROVIDER_PRESETS {
+        let enabled = if preset.id == "zhipu" { 1 } else { 0 };
         let result = sqlx::query(
             r#"
             INSERT OR IGNORE INTO provider_configs (provider_name, enabled, api_key, model, base_url)
-            VALUES (?, ?, '', '', NULL)
+            VALUES (?, ?, '', ?, ?)
             "#
         )
-        .bind(provider)
+        .bind(preset.id)
         .bind(enabled)
+        .bind(preset.default_model)
+        .bind(preset.default_base_url)
         .execute(&pool)
         .await
         .map_err(|e| {
-            crate::app_error!("[DB] 插入服务商 {} 配置失败: {}", provider, e);
+            crate::app_error!("[DB] 插入服务商 {} 配置失败: {}", preset.id, e);
             e.to_string()
         })?;
-        crate::app_info!("[DB] 服务商 {} 初始化完成, rows_affected: {}", provider, result.rows_affected());
+
+        // 对历史空配置做一次兜底补齐，不覆盖用户已保存值
+        sqlx::query(
+            r#"
+            UPDATE provider_configs
+            SET
+              model = CASE WHEN TRIM(model) = '' THEN ? ELSE model END,
+              base_url = CASE
+                WHEN base_url IS NULL OR TRIM(base_url) = '' THEN ?
+                ELSE base_url
+              END
+            WHERE provider_name = ?
+            "#,
+        )
+        .bind(preset.default_model)
+        .bind(preset.default_base_url)
+        .bind(preset.id)
+        .execute(&pool)
+        .await
+        .map_err(|e| {
+            crate::app_error!("[DB] 补齐服务商 {} 默认配置失败: {}", preset.id, e);
+            e.to_string()
+        })?;
+
+        crate::app_info!(
+            "[DB] 服务商 {} 初始化完成, rows_affected: {}",
+            preset.id,
+            result.rows_affected()
+        );
     }
+
+    // 8.1 初始化预置语音服务商配置（如果不存在）
+    crate::app_info!("[DB] 正在初始化语音服务商配置...");
+    for preset in providers::SPEECH_PROVIDER_PRESETS {
+        let result = sqlx::query(
+            r#"
+            INSERT OR IGNORE INTO speech_provider_configs (provider_name, enabled, api_key, model, base_url, voice, audio_format)
+            VALUES (?, 0, '', ?, ?, ?, ?)
+            "#,
+        )
+        .bind(preset.id)
+        .bind(preset.default_model)
+        .bind(preset.default_base_url)
+        .bind(preset.default_voice)
+        .bind(preset.default_audio_format)
+        .execute(&pool)
+        .await
+        .map_err(|e| {
+            crate::app_error!("[DB] 插入语音服务商 {} 配置失败: {}", preset.id, e);
+            e.to_string()
+        })?;
+
+        // 对历史空配置做一次兜底补齐，不覆盖用户已保存值
+        sqlx::query(
+            r#"
+            UPDATE speech_provider_configs
+            SET
+              model = CASE WHEN TRIM(model) = '' THEN ? ELSE model END,
+              base_url = CASE
+                WHEN base_url IS NULL OR TRIM(base_url) = '' THEN ?
+                ELSE base_url
+              END,
+              voice = CASE WHEN TRIM(voice) = '' THEN ? ELSE voice END,
+              audio_format = CASE WHEN TRIM(audio_format) = '' THEN ? ELSE audio_format END
+            WHERE provider_name = ?
+            "#,
+        )
+        .bind(preset.default_model)
+        .bind(preset.default_base_url)
+        .bind(preset.default_voice)
+        .bind(preset.default_audio_format)
+        .bind(preset.id)
+        .execute(&pool)
+        .await
+        .map_err(|e| {
+            crate::app_error!("[DB] 补齐语音服务商 {} 默认配置失败: {}", preset.id, e);
+            e.to_string()
+        })?;
+
+        crate::app_info!(
+            "[DB] 语音服务商 {} 初始化完成, rows_affected: {}",
+            preset.id,
+            result.rows_affected()
+        );
+    }
+
+    // 9. 数据一致性修复：确保最多只有一个启用的服务商
+    sqlx::query(
+        r#"
+        UPDATE provider_configs
+        SET enabled = 0, updated_at = CURRENT_TIMESTAMP
+        WHERE enabled = 1
+          AND provider_name <> (
+            SELECT provider_name
+            FROM provider_configs
+            WHERE enabled = 1
+            ORDER BY datetime(updated_at) DESC, provider_name ASC
+            LIMIT 1
+          )
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        crate::app_error!("[DB] 修复 provider_configs 启用状态失败: {}", e);
+        e.to_string()
+    })?;
+
+    // 10. 数据库强约束：任意时刻最多仅允许一个 enabled=1
+    sqlx::query(
+        r#"
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_configs_single_enabled
+        ON provider_configs(enabled)
+        WHERE enabled = 1
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        crate::app_error!("[DB] 创建 provider_configs 单启用唯一索引失败: {}", e);
+        e.to_string()
+    })?;
+
+    // 10.1 数据一致性修复：语音服务商最多只有一个 enabled=1
+    sqlx::query(
+        r#"
+        UPDATE speech_provider_configs
+        SET enabled = 0, updated_at = CURRENT_TIMESTAMP
+        WHERE enabled = 1
+          AND provider_name <> (
+            SELECT provider_name
+            FROM speech_provider_configs
+            WHERE enabled = 1
+            ORDER BY datetime(updated_at) DESC, provider_name ASC
+            LIMIT 1
+          )
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        crate::app_error!("[DB] 修复 speech_provider_configs 启用状态失败: {}", e);
+        e.to_string()
+    })?;
+
+    // 10.2 数据库强约束：语音服务商任意时刻最多仅允许一个 enabled=1
+    sqlx::query(
+        r#"
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_speech_provider_configs_single_enabled
+        ON speech_provider_configs(enabled)
+        WHERE enabled = 1
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .map_err(|e| {
+        crate::app_error!(
+            "[DB] 创建 speech_provider_configs 单启用唯一索引失败: {}",
+            e
+        );
+        e.to_string()
+    })?;
 
     // 验证数据是否插入成功
     let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM provider_configs")
@@ -177,15 +361,14 @@ pub async fn initialize_db(app: &AppHandle) -> Result<SqlitePool, String> {
     crate::app_info!("[DB] provider_configs 表中共有 {} 条记录", count.0);
 
     // 查询 zhipu 是否存在
-    let zhipu_exists: Option<(String,)> = sqlx::query_as(
-        "SELECT provider_name FROM provider_configs WHERE provider_name = 'zhipu'"
-    )
-    .fetch_optional(&pool)
-    .await
-    .map_err(|e| {
-        crate::app_error!("[DB] 查询 zhipu 配置失败: {}", e);
-        e.to_string()
-    })?;
+    let zhipu_exists: Option<(String,)> =
+        sqlx::query_as("SELECT provider_name FROM provider_configs WHERE provider_name = 'zhipu'")
+            .fetch_optional(&pool)
+            .await
+            .map_err(|e| {
+                crate::app_error!("[DB] 查询 zhipu 配置失败: {}", e);
+                e.to_string()
+            })?;
     crate::app_info!("[DB] zhipu 配置是否存在: {}", zhipu_exists.is_some());
 
     crate::app_info!("[DB] 数据库初始化完成!");

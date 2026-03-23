@@ -361,8 +361,7 @@ pub fn start_listener(app: tauri::AppHandle) {
                                     });
 
                                     if !is_double {
-                                        crate::services::logger::LOGGER
-                                            .info("检测到第一次 Cmd+C");
+                                        crate::services::logger::LOGGER.info("检测到第一次 Cmd+C");
                                         guard.last_c_press = Some(now);
                                     } else {
                                         crate::services::logger::LOGGER
@@ -528,7 +527,8 @@ pub fn start_listener(app: tauri::AppHandle) {
                                 let diff = now.duration_since(prev);
                                 app_debug!("距离上次Ctrl+C时间: {:?}", diff);
                                 // 双击时间窗口：100ms-500ms
-                                diff >= Duration::from_millis(100) && diff <= Duration::from_millis(500)
+                                diff >= Duration::from_millis(100)
+                                    && diff <= Duration::from_millis(500)
                             });
 
                             if !is_double {

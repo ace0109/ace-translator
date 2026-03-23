@@ -51,6 +51,7 @@ pub struct ZhipuProvider {
     client: Client,
     api_key: String,
     model: String,
+    base_url: String,
 }
 
 impl ZhipuProvider {
@@ -80,6 +81,10 @@ impl ZhipuProvider {
             client,
             api_key,
             model,
+            base_url: config
+                .base_url
+                .clone()
+                .unwrap_or_else(|| API_URL.to_string()),
         }
     }
 
@@ -147,7 +152,7 @@ Text: {}"#,
 
         let response = self
             .client
-            .post(API_URL)
+            .post(&self.base_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .json(&payload)
@@ -203,7 +208,7 @@ Text: {}"#,
 
         let response = self
             .client
-            .post(API_URL)
+            .post(&self.base_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .json(&payload)
@@ -261,7 +266,7 @@ Text: {}"#,
         let start = Instant::now();
         let result = self
             .client
-            .post(API_URL)
+            .post(&self.base_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .json(&payload)
@@ -342,7 +347,7 @@ Text: {}"#,
 
         let response = self
             .client
-            .post(API_URL)
+            .post(&self.base_url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .json(&payload)

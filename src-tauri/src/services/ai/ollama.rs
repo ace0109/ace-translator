@@ -10,14 +10,11 @@ use super::provider::{
     AIError, AIProvider, ApiTestResponse, ProviderConfig, StreamEvent, StreamSender,
     TranslationRequest, TranslationResponse,
 };
-use crate::config::prompts;
+use crate::config::{prompts, providers};
 
 const DEFAULT_API_URL: &str = "http://localhost:11434/api/chat";
-const DEFAULT_MODEL: &str = "llama3.2";
+const DEFAULT_MODEL: &str = providers::DEFAULT_OLLAMA_MODEL;
 const REQUEST_TIMEOUT: u64 = 60; // 本地模型可能需要更长时间
-
-/// Ollama 常用模型（用户可自行输入）
-pub const OLLAMA_MODELS: &[&str] = &["llama3.2", "llama3.1", "qwen2.5", "mistral", "gemma2"];
 
 #[derive(Debug, Serialize, Deserialize)]
 struct OllamaResponse {
@@ -83,7 +80,10 @@ impl AIProvider for OllamaProvider {
     }
 
     fn available_models(&self) -> Vec<&'static str> {
-        OLLAMA_MODELS.to_vec()
+        providers::OLLAMA_MODEL_CONFIGS
+            .iter()
+            .map(|m| m.id)
+            .collect()
     }
 
     fn current_model(&self) -> &str {
