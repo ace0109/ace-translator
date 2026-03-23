@@ -2,9 +2,9 @@ use crate::services::logger::{LogEntry, LOGGER};
 use crate::AppState;
 use enigo::Mouse;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 #[cfg(target_os = "macos")]
 use std::process::Command;
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 /// 翻译历史条目
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
@@ -319,9 +319,15 @@ pub fn open_privacy_panel(panel: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let uri = match panel.as_str() {
-            "accessibility" => "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
-            "screen_recording" => "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenRecording",
-            "input_monitoring" => "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
+            "accessibility" => {
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+            }
+            "screen_recording" => {
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenRecording"
+            }
+            "input_monitoring" => {
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"
+            }
             "files" => "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
             _ => "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
         };

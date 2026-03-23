@@ -19,6 +19,10 @@ const targetDir = resolve(tauriDir, 'target')
 const tauriConf = JSON.parse(readFileSync(resolve(tauriDir, 'tauri.conf.json'), 'utf-8'))
 const version = tauriConf.version
 
+// 签名密钥（用于 Tauri 更新签名）
+const SIGNING_KEY = '***REMOVED_UPDATE_SIGNING_PRIVATE_KEY***'
+const SIGNING_PASSWORD = '***REMOVED_UPDATE_SIGNING_PASSWORD***'
+
 // 获取额外参数
 let args = process.argv.slice(2)
 
@@ -30,22 +34,19 @@ if (!isWindows && isBuildingWindows) {
   console.log('🍎 检测到 macOS 环境构建 Windows，已自动添加 --runner cargo-xwin')
 }
 
+console.log('🔐 已设置 Tauri 签名环境变量')
 console.log(`📦 当前版本: v${version}`)
 console.log('🔨 开始构建...\n')
-
-const buildEnv = {
-  ...process.env,
-}
-
-if (process.env.TAURI_SIGNING_PRIVATE_KEY) {
-  console.log('🔐 检测到 TAURI_SIGNING_PRIVATE_KEY，构建时将使用外部注入的签名配置')
-}
 
 try {
   execSync(`pnpm tauri build ${args.join(' ')}`, {
     cwd: rootDir,
     stdio: 'inherit',
-    env: buildEnv,
+    env: {
+      ...process.env,
+      TAURI_SIGNING_PRIVATE_KEY: SIGNING_KEY,
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: SIGNING_PASSWORD,
+    },
   })
 
   // 构建成功后，收集安装包到版本目录

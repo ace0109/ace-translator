@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ace-translator",
-  "identifier": "com.ace0109.ace-translator",
-  "version": "0.0.1",
+  "identifier": "com.wangcaiyuan.ace-translator",
+  "version": "1.3.0",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -90,7 +90,7 @@
     }
   },
   "bundle": {
-    "createUpdaterArtifacts": false,
+    "createUpdaterArtifacts": true,
     "active": true,
     "targets": [
       "nsis",
@@ -116,6 +116,14 @@
           "English"
         ]
       }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEIzMDQ0MTMzODI0N0Q1RDMKUldUVDFVZUNNMEVFc3hmbUJQbm9VZEM3bGppWWI1THFSOVh3UTBubHhaeXFqT093TTVzZnE2UkcK",
+      "endpoints": [
+        "https://github.com/ace0109/ace-translator/releases/latest/download/latest.json"
+      ]
     }
   }
 }

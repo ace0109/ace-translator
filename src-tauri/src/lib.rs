@@ -35,6 +35,7 @@ pub fn run() {
     crate::app_info!("应用启动中...");
 
     let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             // Focus existing instance instead of spawning another when launched again (e.g. from a shortcut)
             if let Some(window) = app.get_webview_window("main") {
@@ -44,6 +45,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             crate::app_info!("开始初始化应用...");
 
@@ -278,16 +280,25 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::translation::translate_text,
+            commands::translation::translate_active_provider,
             commands::translation::translate_multi,
+            commands::translation::translate_active_provider_stream,
+            commands::translation::translate_active_provider_with_specified_langs_stream,
             commands::translation::translate_multi_stream_individual,
             commands::translation::translate_with_specified_langs,
+            commands::translation::synthesize_speech,
             commands::translation::cancel_translation,
             commands::translation::cancel_all_translations,
             commands::settings::save_settings,
             commands::settings::get_settings,
             commands::settings::get_provider_configs,
+            commands::settings::get_speech_provider_configs,
             commands::settings::save_provider_config,
+            commands::settings::save_speech_provider_config,
             commands::settings::test_provider,
+            commands::settings::test_speech_provider,
+            commands::settings::create_custom_provider,
+            commands::settings::delete_custom_provider,
             commands::settings::get_hotkey_config,
             commands::settings::save_hotkey_config,
             commands::system::show_main_window,
