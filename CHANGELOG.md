@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented in this file.
 
-## [1.3.0] - 2026-03-23
+## [0.0.1] - 2026-03-23
 
 ### Added
 
@@ -40,4 +40,3 @@ All notable changes to this project are documented in this file.
 - `cargo check` passed.
 - `cargo test` passed.
 - `pnpm exec vue-tsc --noEmit` passed.
-
