@@ -2,6 +2,7 @@ import { defineConfig } from 'vitepress'
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
+  base: '/ace-translator/',
   title: "Ace Translator",
   description: "您的智能 AI 翻译助手",
   themeConfig: {
