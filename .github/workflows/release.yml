@@ -106,7 +106,7 @@ jobs:
             Installers built by GitHub Actions.
 
             See the generated release notes below for the full change list.
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           generateReleaseNotes: true
           retryAttempts: 2
