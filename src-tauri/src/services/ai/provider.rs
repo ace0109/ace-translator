@@ -17,8 +17,6 @@ pub enum AIError {
     ServiceUnavailable(String),
     /// 超时
     Timeout(String),
-    /// 其他错误
-    Other(String),
 }
 
 impl fmt::Display for AIError {
@@ -29,7 +27,6 @@ impl fmt::Display for AIError {
             AIError::InvalidApiKey(msg) => write!(f, "API Key 无效: {}", msg),
             AIError::ServiceUnavailable(msg) => write!(f, "服务不可用: {}", msg),
             AIError::Timeout(msg) => write!(f, "请求超时: {}", msg),
-            AIError::Other(msg) => write!(f, "{}", msg),
         }
     }
 }
@@ -97,7 +94,7 @@ pub struct TranslationResponse {
 /// 服务商配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderConfig {
-    /// 服务商名称（zhipu/openai/claude/ollama）
+    /// 服务商名称（预置或用户自定义，如 zhipu/openai/deepseek/xiaomi/ollama 等）
     #[serde(default)]
     pub provider_name: String,
     /// 是否启用
@@ -157,6 +154,7 @@ pub trait AIProvider: Send + Sync {
     fn current_model(&self) -> &str;
 
     /// 检测语种
+    #[allow(dead_code)]
     async fn detect_language(&self, text: &str) -> Result<String, AIError>;
 
     /// 执行翻译（非流式）

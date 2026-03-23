@@ -1,17 +1,20 @@
-use crate::config::providers::{self, DEFAULT_ZHIPU_MODEL};
+use crate::commands::error_codes;
+use crate::config::providers;
 use crate::services::ai::{
     claude::ClaudeProvider, key::resolve_default_zhipu_api_key, ollama::OllamaProvider,
     openai::OpenAIProvider, zhipu::ZhipuProvider, AIProvider, ProviderConfig, StreamEvent,
     TranslationRequest, TranslationResponse,
 };
 use crate::services::encryption::decrypt_api_key;
+use crate::services::speech::{self, SpeechProviderConfig};
 use crate::AppState;
-use futures::future::{join_all, AbortHandle, Abortable, Aborted};
+use futures::future::{AbortHandle, Abortable, Aborted};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::mpsc;
+use whatlang::detect as detect_language_with_whatlang;
 
 /// 单个服务商的翻译结果
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -39,6 +42,15 @@ pub struct TranslationResult {
     pub translation: String,
 }
 
+/// 语音合成结果
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SpeechSynthesisResult {
+    pub provider: String,
+    pub model: String,
+    pub audio_format: String,
+    pub audio_base64: String,
+}
+
 /// 取消标记：仅用于停止事件推送，不会真正中断上游 HTTP 请求。
 fn mark_cancelled_request(state: &State<'_, AppState>, req_id: u64) {
     if let Ok(mut cancelled) = state.cancelled_requests.lock() {
@@ -61,132 +73,286 @@ fn is_request_cancelled(app: &AppHandle, req_id: u64) -> bool {
     false
 }
 
-/// 确保语言检测始终使用智谱，模型默认 glm-4-flash，API Key 远程拉取失败则使用内置。
-async fn zhipu_detector_config(db: &sqlx::SqlitePool) -> Result<ProviderConfig, String> {
-    #[derive(sqlx::FromRow)]
-    struct ZhipuRow {
-        api_key: String,
-        model: String,
-        base_url: Option<String>,
+fn normalize_model(provider_name: &str, model: &str) -> String {
+    let trimmed = model.trim();
+    if !trimmed.is_empty() {
+        return trimmed.to_string();
     }
+    providers::default_model_for_provider(provider_name)
+        .unwrap_or("")
+        .to_string()
+}
 
-    let row: Option<ZhipuRow> = sqlx::query_as(
-        "SELECT api_key, model, base_url FROM provider_configs WHERE provider_name = 'zhipu' LIMIT 1",
-    )
-    .fetch_optional(db)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    let mut api_key = row
-        .as_ref()
-        .and_then(|r| {
-            if r.api_key.is_empty() {
-                None
-            } else {
-                Some(decrypt_api_key(&r.api_key).unwrap_or_default())
-            }
-        })
-        .unwrap_or_default();
-
-    if api_key.is_empty() {
-        api_key = resolve_default_zhipu_api_key().await;
+fn normalize_base_url(provider_name: &str, base_url: Option<String>) -> Option<String> {
+    if let Some(base) = base_url {
+        let trimmed = base.trim().to_string();
+        if !trimmed.is_empty() {
+            return Some(trimmed);
+        }
     }
+    providers::default_base_url_for_provider(provider_name).map(|v| v.to_string())
+}
 
-    let model = row
-        .as_ref()
-        .map(|r| {
-            if r.model.is_empty() {
-                DEFAULT_ZHIPU_MODEL.to_string()
-            } else {
-                r.model.clone()
-            }
-        })
-        .unwrap_or_else(|| DEFAULT_ZHIPU_MODEL.to_string());
-
-    Ok(ProviderConfig {
-        provider_name: "zhipu".to_string(),
-        enabled: true,
-        api_key,
-        model,
-        base_url: row.and_then(|r| r.base_url),
+fn now_request_id(request_id: Option<u64>) -> u64 {
+    request_id.unwrap_or_else(|| {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
     })
 }
 
-/// 从数据库获取已启用的服务商配置
-async fn get_enabled_providers(db: &sqlx::SqlitePool) -> Result<Vec<ProviderConfig>, String> {
-    #[derive(sqlx::FromRow)]
-    struct DbProviderConfig {
-        provider_name: String,
-        api_key: String,
-        model: String,
-        base_url: Option<String>,
-    }
-
-    let rows: Vec<DbProviderConfig> = sqlx::query_as(
-        "SELECT provider_name, enabled, api_key, model, base_url FROM provider_configs WHERE provider_name = 'zhipu'"
-    )
-    .fetch_all(db)
-    .await
-    .map_err(|e| e.to_string())?;
-
-    let mut configs = Vec::new();
-    for row in rows {
-        let api_key = if !row.api_key.is_empty() {
-            decrypt_api_key(&row.api_key).unwrap_or_default()
-        } else if row.provider_name == "zhipu" {
-            resolve_default_zhipu_api_key().await
-        } else {
-            String::new()
-        };
-
-        // Fallback to a sane default model if DB value is empty
-        let model = if row.model.is_empty() {
-            match row.provider_name.as_str() {
-                "zhipu" => DEFAULT_ZHIPU_MODEL.to_string(),
-                "openai" => providers::OPENAI_MODELS
-                    .first()
-                    .map(|m| m.id)
-                    .unwrap_or("gpt-4o-mini")
-                    .to_string(),
-                "claude" => providers::CLAUDE_MODELS
-                    .first()
-                    .map(|m| m.id)
-                    .unwrap_or("claude-3-5-haiku-latest")
-                    .to_string(),
-                "ollama" => "llama3.2".to_string(),
-                _ => String::new(),
-            }
-        } else {
-            row.model.clone()
-        };
-
-        configs.push(ProviderConfig {
-            provider_name: row.provider_name,
-            enabled: true, // 智谱强制启用，其余因查询条件已过滤
-            api_key,
+fn log_translation_metric(
+    mode: &str,
+    request_id: u64,
+    provider: &str,
+    model: &str,
+    status: &str,
+    duration_ms: u128,
+    detail: Option<&str>,
+) {
+    if let Some(message) = detail {
+        crate::app_info!(
+            "[TranslationMetric] mode={} request_id={} provider={} model={} status={} duration_ms={} detail={}",
+            mode,
+            request_id,
+            provider,
             model,
-            base_url: row.base_url,
-        });
+            status,
+            duration_ms,
+            message,
+        );
+    } else {
+        crate::app_info!(
+            "[TranslationMetric] mode={} request_id={} provider={} model={} status={} duration_ms={}",
+            mode,
+            request_id,
+            provider,
+            model,
+            status,
+            duration_ms,
+        );
     }
-
-    Ok(configs)
 }
 
-// Helper function: Detect language and determine target language
-async fn detect_and_plan(
-    config: &ProviderConfig,
-    text: &str,
-    primary_target: &str,
-    secondary_target: &str,
-) -> Result<(String, String), String> {
-    // 语言检测强制只使用智谱
-    let detected_lang = match config.provider_name.as_str() {
-        "zhipu" => ZhipuProvider::new(config).detect_language(text).await,
-        _ => Err(crate::services::ai::AIError::Other(
-            "语言检测仅支持智谱 AI".to_string(),
-        )),
+#[derive(sqlx::FromRow)]
+struct DbProviderConfig {
+    provider_name: String,
+    enabled: i32,
+    api_key: String,
+    model: String,
+    base_url: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct DbSpeechProviderConfig {
+    provider_name: String,
+    enabled: i32,
+    api_key: String,
+    model: String,
+    base_url: Option<String>,
+    voice: String,
+    audio_format: String,
+}
+
+async fn decode_provider_row(row: DbProviderConfig) -> ProviderConfig {
+    let provider_name = row.provider_name;
+    let api_key = if !row.api_key.is_empty() {
+        decrypt_api_key(&row.api_key).unwrap_or_default()
+    } else if provider_name == "zhipu" {
+        resolve_default_zhipu_api_key().await
+    } else {
+        String::new()
+    };
+
+    ProviderConfig {
+        provider_name: provider_name.clone(),
+        enabled: row.enabled != 0,
+        api_key,
+        model: normalize_model(&provider_name, &row.model),
+        base_url: normalize_base_url(&provider_name, row.base_url),
     }
-    .map_err(|e| e.to_string())?;
+}
+
+fn normalize_speech_model(provider_name: &str, model: &str) -> String {
+    let trimmed = model.trim();
+    if !trimmed.is_empty() {
+        return trimmed.to_string();
+    }
+    providers::speech_default_model_for_provider(provider_name)
+        .unwrap_or("")
+        .to_string()
+}
+
+fn normalize_speech_base_url(provider_name: &str, base_url: Option<String>) -> Option<String> {
+    if let Some(base) = base_url {
+        let trimmed = base.trim().to_string();
+        if !trimmed.is_empty() {
+            return Some(trimmed);
+        }
+    }
+    providers::speech_default_base_url_for_provider(provider_name).map(|v| v.to_string())
+}
+
+fn normalize_speech_voice(provider_name: &str, voice: &str) -> String {
+    let trimmed = voice.trim();
+    if !trimmed.is_empty() {
+        return trimmed.to_string();
+    }
+    providers::speech_default_voice_for_provider(provider_name)
+        .unwrap_or(providers::DEFAULT_XIAOMI_TTS_VOICE)
+        .to_string()
+}
+
+fn normalize_speech_audio_format(provider_name: &str, audio_format: &str) -> String {
+    let trimmed = audio_format.trim();
+    if !trimmed.is_empty() {
+        return trimmed.to_lowercase();
+    }
+    providers::speech_default_audio_format_for_provider(provider_name)
+        .unwrap_or(providers::DEFAULT_TTS_AUDIO_FORMAT)
+        .to_string()
+}
+
+async fn decode_speech_provider_row(row: DbSpeechProviderConfig) -> SpeechProviderConfig {
+    let provider_name = row.provider_name;
+    let api_key = if !row.api_key.is_empty() {
+        decrypt_api_key(&row.api_key).unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    SpeechProviderConfig {
+        provider_name: provider_name.clone(),
+        enabled: row.enabled != 0,
+        api_key,
+        model: normalize_speech_model(&provider_name, &row.model),
+        base_url: normalize_speech_base_url(&provider_name, row.base_url),
+        voice: normalize_speech_voice(&provider_name, &row.voice),
+        audio_format: normalize_speech_audio_format(&provider_name, &row.audio_format),
+    }
+}
+
+/// 获取当前唯一启用的服务商配置（单服务商架构）
+async fn get_active_provider(db: &sqlx::SqlitePool) -> Result<ProviderConfig, String> {
+    let row: Option<DbProviderConfig> = sqlx::query_as(
+        r#"
+        SELECT provider_name, enabled, api_key, model, base_url
+        FROM provider_configs
+        WHERE enabled = 1
+        ORDER BY datetime(updated_at) DESC, provider_name ASC
+        LIMIT 1
+        "#,
+    )
+    .fetch_optional(db)
+    .await
+    .map_err(|e| error_codes::with_code(error_codes::DB_OPERATION_FAILED, e.to_string()))?;
+
+    let Some(row) = row else {
+        return Err(error_codes::with_code(
+            error_codes::NO_ACTIVE_PROVIDER,
+            "没有已启用的服务商。请在设置中配置并启用一个服务商。",
+        ));
+    };
+
+    Ok(decode_provider_row(row).await)
+}
+
+/// 获取当前唯一启用的语音服务商配置（单服务商架构）
+async fn get_active_speech_provider(db: &sqlx::SqlitePool) -> Result<SpeechProviderConfig, String> {
+    let row: Option<DbSpeechProviderConfig> = sqlx::query_as(
+        r#"
+        SELECT provider_name, enabled, api_key, model, base_url, voice, audio_format
+        FROM speech_provider_configs
+        WHERE enabled = 1
+        ORDER BY datetime(updated_at) DESC, provider_name ASC
+        LIMIT 1
+        "#,
+    )
+    .fetch_optional(db)
+    .await
+    .map_err(|e| error_codes::with_code(error_codes::DB_OPERATION_FAILED, e.to_string()))?;
+
+    let Some(row) = row else {
+        return Err(error_codes::with_code(
+            error_codes::NO_ACTIVE_SPEECH_PROVIDER,
+            "没有已启用的语音服务商。请在设置中配置并启用一个语音服务商。",
+        ));
+    };
+
+    Ok(decode_speech_provider_row(row).await)
+}
+
+fn provider_can_translate(config: &ProviderConfig) -> bool {
+    match config.provider_name.as_str() {
+        "zhipu" => !config.api_key.trim().is_empty(),
+        "ollama" => true,
+        _ => !config.api_key.trim().is_empty(),
+    }
+}
+
+fn normalize_whatlang_code_to_app_lang(code: &str) -> Option<&'static str> {
+    match code {
+        "cmn" | "zho" => Some("zh-CN"),
+        "eng" => Some("en"),
+        "jpn" => Some("ja"),
+        "kor" => Some("ko"),
+        "fra" | "fre" => Some("fr"),
+        "deu" | "ger" => Some("de"),
+        "spa" => Some("es"),
+        "rus" => Some("ru"),
+        "ara" => Some("ar"),
+        "por" => Some("pt"),
+        "ita" => Some("it"),
+        "nld" | "dut" => Some("nl"),
+        "swe" => Some("sv"),
+        "nor" => Some("no"),
+        "dan" => Some("da"),
+        "fin" => Some("fi"),
+        "pol" => Some("pl"),
+        "ces" | "cze" => Some("cs"),
+        "hun" => Some("hu"),
+        "ron" | "rum" => Some("ro"),
+        "ukr" => Some("uk"),
+        "ell" | "gre" => Some("el"),
+        "heb" => Some("he"),
+        "hin" => Some("hi"),
+        "tha" => Some("th"),
+        "vie" => Some("vi"),
+        "ind" => Some("id"),
+        "msa" | "may" => Some("ms"),
+        "tur" => Some("tr"),
+        _ => None,
+    }
+}
+
+fn detect_language_locally(text: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return "en".to_string();
+    }
+
+    if let Some(info) = detect_language_with_whatlang(trimmed) {
+        let code = info.lang().code();
+        if let Some(mapped) = normalize_whatlang_code_to_app_lang(code) {
+            return mapped.to_string();
+        }
+    }
+
+    // Final fallback for short/ambiguous texts where local detector is uncertain.
+    if trimmed
+        .chars()
+        .any(|ch| (0x4E00..=0x9FFF).contains(&(ch as u32)))
+    {
+        return "zh-CN".to_string();
+    }
+
+    "en".to_string()
+}
+
+// Helper function: locally detect language and determine target language.
+fn detect_and_plan(text: &str, primary_target: &str, secondary_target: &str) -> (String, String) {
+    let detected_lang = detect_language_locally(text);
 
     // Simple normalization of detected_lang (take the first two characters, convert to lowercase)
     let normalized_detected = detected_lang.to_lowercase();
@@ -199,7 +365,7 @@ async fn detect_and_plan(
         primary_target.to_string()
     };
 
-    Ok((detected_lang, target_lang))
+    (detected_lang, target_lang)
 }
 
 /// 使用单个服务商进行翻译
@@ -212,25 +378,28 @@ async fn translate_with_provider(
             let provider = ZhipuProvider::new(config);
             provider.translate(request).await.map_err(|e| e.to_string())
         }
-        "openai" => {
-            let provider = OpenAIProvider::new(config);
+        "ollama" => {
+            let provider = OllamaProvider::new(config);
             provider.translate(request).await.map_err(|e| e.to_string())
         }
         "claude" => {
             let provider = ClaudeProvider::new(config);
             provider.translate(request).await.map_err(|e| e.to_string())
         }
-        "ollama" => {
-            let provider = OllamaProvider::new(config);
+        _ => {
+            let provider = OpenAIProvider::new(config);
             provider.translate(request).await.map_err(|e| e.to_string())
         }
-        _ => Err(format!("未知服务商: {}", config.provider_name)),
     };
 
     match result {
         Ok(resp) => ProviderTranslationResult {
-            provider: resp.provider,
-            model: resp.model,
+            provider: config.provider_name.clone(),
+            model: if resp.model.trim().is_empty() {
+                config.model.clone()
+            } else {
+                resp.model
+            },
             detected_source_lang: request.source_lang.clone(),
             target_lang: request.target_lang.clone(),
             translation: resp.translation,
@@ -244,57 +413,45 @@ async fn translate_with_provider(
             target_lang: request.target_lang.clone(),
             translation: String::new(),
             success: false,
-            error: Some(e),
+            error: Some(error_codes::ensure_code(e, error_codes::TRANSLATION_FAILED)),
         },
     }
 }
 
-/// 多服务商并行翻译
+/// 单服务商翻译（主命令）
 #[tauri::command]
-pub async fn translate_multi(
+pub async fn translate_active_provider(
     _app: AppHandle,
     state: State<'_, AppState>,
     text: String,
     #[allow(non_snake_case)] primaryTarget: String,
     #[allow(non_snake_case)] secondaryTarget: String,
     #[allow(non_snake_case)] requestId: Option<u64>,
-) -> Result<MultiProviderResult, String> {
+) -> Result<ProviderTranslationResult, String> {
     if text.trim().is_empty() {
-        return Err("Text is empty".to_string());
+        return Err(error_codes::with_code(
+            error_codes::EMPTY_TEXT,
+            "输入文本不能为空",
+        ));
     }
 
-    // Generate request ID
-    let req_id = requestId.unwrap_or_else(|| {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64
-    });
+    let req_id = now_request_id(requestId);
     clear_cancelled_request(&state, req_id);
 
-    // Get enabled providers
-    let providers = get_enabled_providers(&state.db).await?;
-
-    if providers.is_empty() {
-        return Err("没有已启用的服务商。请在设置中配置并启用至少一个服务商。".to_string());
+    let started_at = Instant::now();
+    let active_provider = get_active_provider(&state.db).await?;
+    if !provider_can_translate(&active_provider) {
+        return Err(error_codes::with_code(
+            error_codes::INVALID_PROVIDER_CONFIG,
+            "当前启用服务商缺少可用 API Key，无法进行翻译",
+        ));
     }
 
     if let Ok(mut loading) = state.main_loading.lock() {
         *loading = true;
     }
 
-    // 1. Language detection (only Zhipu)
-    let detector_config = zhipu_detector_config(&state.db).await?;
-    let (detected_lang, target_lang) =
-        match detect_and_plan(&detector_config, &text, &primaryTarget, &secondaryTarget).await {
-            Ok(res) => res,
-            Err(e) => {
-                if let Ok(mut loading) = state.main_loading.lock() {
-                    *loading = false;
-                }
-                return Err(format!("语言检测失败: {}", e));
-            }
-        };
+    let (detected_lang, target_lang) = detect_and_plan(&text, &primaryTarget, &secondaryTarget);
 
     let request = TranslationRequest {
         text: text.clone(),
@@ -302,40 +459,26 @@ pub async fn translate_multi(
         target_lang: target_lang.clone(),
     };
 
-    // Create abortable futures
-    let mut abort_handles = Vec::new();
-    let mut abortable_futures = Vec::new();
+    let (abort_handle, abort_registration) = AbortHandle::new_pair();
+    let active_provider_name = active_provider.provider_name.clone();
+    let active_provider_model = active_provider.model.clone();
 
-    for config in providers.iter() {
-        let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        abort_handles.push(abort_handle);
-
-        let config_clone = config.clone();
-        let request_clone = request.clone();
-        let future = async move { translate_with_provider(&config_clone, &request_clone).await };
-
-        abortable_futures.push(Abortable::new(future, abort_registration));
-    }
-
-    // 存储 abort handles 以便取消
     {
         let mut handles_map = HashMap::new();
-        // Note: providers and abort_handles are aligned by index
-        for (i, handle) in abort_handles.into_iter().enumerate() {
-            if let Some(provider) = providers.get(i) {
-                handles_map.insert(provider.provider_name.clone(), handle);
-            }
-        }
-
+        handles_map.insert(active_provider_name.clone(), abort_handle);
         if let Ok(mut handles) = state.main_abort_handles.lock() {
             handles.insert(req_id, handles_map);
         }
     }
 
-    // Execute all translation requests in parallel
-    let abortable_results = join_all(abortable_futures).await;
+    let config_clone = active_provider.clone();
+    let request_clone = request.clone();
+    let abortable_result = Abortable::new(
+        async move { translate_with_provider(&config_clone, &request_clone).await },
+        abort_registration,
+    )
+    .await;
 
-    // Clear abort handles
     {
         if let Ok(mut handles) = state.main_abort_handles.lock() {
             handles.remove(&req_id);
@@ -346,126 +489,27 @@ pub async fn translate_multi(
         *loading = false;
     }
 
-    // Process results
-    let mut results = Vec::new();
-    for (i, result) in abortable_results.into_iter().enumerate() {
-        match result {
-            Ok(mut provider_result) => {
-                provider_result.detected_source_lang = detected_lang.clone();
-                provider_result.target_lang = target_lang.clone();
-                results.push(provider_result);
-            }
-            Err(Aborted) => {
-                // Request was cancelled
-                results.push(ProviderTranslationResult {
-                    provider: providers[i].provider_name.clone(),
-                    model: providers[i].model.clone(),
-                    detected_source_lang: detected_lang.clone(),
-                    target_lang: target_lang.clone(),
-                    translation: String::new(),
-                    success: false,
-                    error: Some("请求已取消".to_string()),
-                });
-            }
+    let mut result = match abortable_result {
+        Ok(mut provider_result) => {
+            provider_result.detected_source_lang = detected_lang.clone();
+            provider_result.target_lang = target_lang.clone();
+            provider_result
         }
-    }
-
-    // Write to cache (using the first successful result)
-    if let Some(first_success) = results.iter().find(|r| r.success) {
-        let _ = sqlx::query(
-            "INSERT OR REPLACE INTO translation_history (source_text, translated_text, source_lang, target_lang, provider, model) VALUES (?, ?, ?, ?, ?, ?)",
-        )
-        .bind(&text)
-        .bind(&first_success.translation)
-        .bind(&first_success.detected_source_lang)
-        .bind(&first_success.target_lang)
-        .bind(&first_success.provider)
-        .bind(&first_success.model)
-        .execute(&state.db)
-        .await;
-    }
-
-    if let Ok(mut cancelled) = state.cancelled_requests.lock() {
-        cancelled.remove(&req_id);
-    }
-
-    Ok(MultiProviderResult { results })
-}
-
-/// 旧版单服务商翻译（兼容，使用第一个已启用的服务商）
-#[tauri::command]
-pub async fn translate_text(
-    _app: AppHandle,
-    state: State<'_, AppState>,
-    text: String,
-    #[allow(non_snake_case)] primaryTarget: String,
-    #[allow(non_snake_case)] secondaryTarget: String,
-    #[allow(non_snake_case)] requestId: Option<u64>,
-) -> Result<TranslationResult, String> {
-    let req_id = requestId.unwrap_or_else(|| {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64
-    });
-    clear_cancelled_request(&state, req_id);
-
-    println!(
-        "[translate_text] start | req_id={:?} primary={} secondary={} text_len={}",
-        req_id,
-        primaryTarget,
-        secondaryTarget,
-        text.len()
-    );
-
-    if text.trim().is_empty() {
-        return Err("Text is empty".to_string());
-    }
-
-    // 获取已启用的服务商
-    let providers = get_enabled_providers(&state.db).await?;
-
-    if providers.is_empty() {
-        return Err("没有已启用的服务商。请在设置中配置并启用至少一个服务商。".to_string());
-    }
-
-    // 使用第一个已启用的服务商
-    let config = &providers[0];
-
-    if let Ok(mut loading) = state.main_loading.lock() {
-        *loading = true;
-    }
-
-    // 1. 语言检测（智谱）
-    let detector_config = zhipu_detector_config(&state.db).await?;
-    let (detected_lang, target_lang) =
-        match detect_and_plan(&detector_config, &text, &primaryTarget, &secondaryTarget).await {
-            Ok(res) => res,
-            Err(e) => {
-                if let Ok(mut loading) = state.main_loading.lock() {
-                    *loading = false;
-                }
-                return Err(format!("语言检测失败: {}", e));
-            }
-        };
-
-    let request = TranslationRequest {
-        text: text.clone(),
-        source_lang: detected_lang.clone(),
-        target_lang: target_lang.clone(),
+        Err(Aborted) => ProviderTranslationResult {
+            provider: active_provider_name.clone(),
+            model: active_provider_model.clone(),
+            detected_source_lang: detected_lang.clone(),
+            target_lang: target_lang.clone(),
+            translation: String::new(),
+            success: false,
+            error: Some(error_codes::with_code(
+                error_codes::TRANSLATION_CANCELLED,
+                "请求已取消",
+            )),
+        },
     };
 
-    let mut result = translate_with_provider(config, &request).await;
-
-    if let Ok(mut loading) = state.main_loading.lock() {
-        *loading = false;
-    }
-
     if result.success {
-        result.detected_source_lang = detected_lang.clone();
-        result.target_lang = target_lang.clone();
-
-        // 写入缓存
         let _ = sqlx::query(
             "INSERT OR REPLACE INTO translation_history (source_text, translated_text, source_lang, target_lang, provider, model) VALUES (?, ?, ?, ?, ?, ?)",
         )
@@ -477,22 +521,147 @@ pub async fn translate_text(
         .bind(&result.model)
         .execute(&state.db)
         .await;
+    } else if let Some(err) = result.error.take() {
+        result.error = Some(error_codes::ensure_code(
+            err,
+            error_codes::TRANSLATION_FAILED,
+        ));
+    }
 
-        if let Ok(mut cancelled) = state.cancelled_requests.lock() {
-            cancelled.remove(&req_id);
-        }
+    if let Ok(mut cancelled) = state.cancelled_requests.lock() {
+        cancelled.remove(&req_id);
+    }
 
+    let duration_ms = started_at.elapsed().as_millis();
+    let status = if result.success { "success" } else { "failed" };
+    let detail = result.error.as_deref();
+    log_translation_metric(
+        "non_stream",
+        req_id,
+        &result.provider,
+        &result.model,
+        status,
+        duration_ms,
+        detail,
+    );
+
+    Ok(result)
+}
+
+/// 兼容旧命令：保留 `translate_multi` 返回结构
+#[tauri::command]
+pub async fn translate_multi(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    text: String,
+    #[allow(non_snake_case)] primaryTarget: String,
+    #[allow(non_snake_case)] secondaryTarget: String,
+    #[allow(non_snake_case)] requestId: Option<u64>,
+) -> Result<MultiProviderResult, String> {
+    let result =
+        translate_active_provider(app, state, text, primaryTarget, secondaryTarget, requestId)
+            .await?;
+    Ok(MultiProviderResult {
+        results: vec![result],
+    })
+}
+
+/// 旧版单服务商翻译（兼容，使用当前启用服务商）
+#[tauri::command]
+pub async fn translate_text(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    text: String,
+    #[allow(non_snake_case)] primaryTarget: String,
+    #[allow(non_snake_case)] secondaryTarget: String,
+    #[allow(non_snake_case)] requestId: Option<u64>,
+) -> Result<TranslationResult, String> {
+    let result =
+        translate_active_provider(app, state, text, primaryTarget, secondaryTarget, requestId)
+            .await?;
+
+    if result.success {
         Ok(TranslationResult {
             detected_source_lang: result.detected_source_lang,
             target_lang: result.target_lang,
             translation: result.translation,
         })
     } else {
-        if let Ok(mut cancelled) = state.cancelled_requests.lock() {
-            cancelled.remove(&req_id);
-        }
-        Err(result.error.unwrap_or_else(|| "翻译失败".to_string()))
+        Err(result
+            .error
+            .unwrap_or_else(|| error_codes::with_code(error_codes::TRANSLATION_FAILED, "翻译失败")))
     }
+}
+
+/// 语音合成（基于当前启用的语音服务商）
+#[tauri::command]
+pub async fn synthesize_speech(
+    state: State<'_, AppState>,
+    text: String,
+) -> Result<SpeechSynthesisResult, String> {
+    if text.trim().is_empty() {
+        return Err(error_codes::with_code(
+            error_codes::EMPTY_TEXT,
+            "输入文本不能为空",
+        ));
+    }
+
+    let active_provider = get_active_speech_provider(&state.db).await?;
+    if active_provider.model.trim().is_empty() {
+        return Err(error_codes::with_code(
+            error_codes::INVALID_SPEECH_PROVIDER_CONFIG,
+            "当前语音服务商缺少模型配置",
+        ));
+    }
+    if active_provider
+        .base_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_none()
+    {
+        return Err(error_codes::with_code(
+            error_codes::INVALID_SPEECH_PROVIDER_CONFIG,
+            "当前语音服务商缺少 API 地址配置",
+        ));
+    }
+    if active_provider.api_key.trim().is_empty() {
+        return Err(error_codes::with_code(
+            error_codes::INVALID_SPEECH_PROVIDER_CONFIG,
+            "当前语音服务商缺少 API Key 配置",
+        ));
+    }
+    if active_provider.voice.trim().is_empty() {
+        return Err(error_codes::with_code(
+            error_codes::INVALID_SPEECH_PROVIDER_CONFIG,
+            "当前语音服务商缺少 voice 配置",
+        ));
+    }
+
+    let response = speech::synthesize_openai_speech(&active_provider, text.trim()).await;
+    if response.success {
+        if let Some(audio_base64) = response.audio_base64 {
+            return Ok(SpeechSynthesisResult {
+                provider: active_provider.provider_name,
+                model: active_provider.model,
+                audio_format: active_provider.audio_format,
+                audio_base64,
+            });
+        }
+    }
+
+    let error_message = response.error.unwrap_or_else(|| {
+        if response.status_code == 0 {
+            "语音合成请求失败".to_string()
+        } else {
+            format!("语音合成失败（HTTP {}）", response.status_code)
+        }
+    });
+
+    Err(error_codes::with_code(
+        error_codes::SPEECH_SYNTHESIS_FAILED,
+        error_message,
+    ))
 }
 
 /// 取消指定的翻译请求
@@ -562,6 +731,7 @@ async fn translate_stream_with_provider(
     request: &TranslationRequest,
     req_id: u64,
 ) -> ProviderTranslationResult {
+    let started_at = Instant::now();
     let (tx, mut rx) = mpsc::channel::<StreamEvent>(100);
 
     let provider_name = config.provider_name.clone();
@@ -576,30 +746,17 @@ async fn translate_stream_with_provider(
                 let provider = ZhipuProvider::new(&config_clone);
                 provider.translate_stream(&request_clone, tx, req_id).await
             }
-            "openai" => {
-                let provider = OpenAIProvider::new(&config_clone);
+            "ollama" => {
+                let provider = OllamaProvider::new(&config_clone);
                 provider.translate_stream(&request_clone, tx, req_id).await
             }
             "claude" => {
                 let provider = ClaudeProvider::new(&config_clone);
                 provider.translate_stream(&request_clone, tx, req_id).await
             }
-            "ollama" => {
-                let provider = OllamaProvider::new(&config_clone);
-                provider.translate_stream(&request_clone, tx, req_id).await
-            }
             _ => {
-                let _ = tx
-                    .send(StreamEvent::Error {
-                        provider: config_clone.provider_name.clone(),
-                        error: format!("未知服务商: {}", config_clone.provider_name),
-                        request_id: req_id, // Pass req_id here
-                    })
-                    .await;
-                Err(crate::services::ai::AIError::Other(format!(
-                    "未知服务商: {}",
-                    config_clone.provider_name
-                )))
+                let provider = OpenAIProvider::new(&config_clone);
+                provider.translate_stream(&request_clone, tx, req_id).await
             }
         }
     });
@@ -643,6 +800,10 @@ async fn translate_stream_with_provider(
             }
         }
 
+        if let StreamEvent::Error { error, .. } = &mut event {
+            *error = error_codes::ensure_code(error.clone(), error_codes::TRANSLATION_FAILED);
+        }
+
         // Emit normalized event to frontend
         let _ = app.emit("translation-stream", &event);
 
@@ -683,7 +844,10 @@ async fn translate_stream_with_provider(
                         target_lang: request.target_lang.clone(),
                         translation: String::new(),
                         success: false,
-                        error: Some(error.clone()),
+                        error: Some(error_codes::ensure_code(
+                            error.clone(),
+                            error_codes::TRANSLATION_FAILED,
+                        )),
                     });
                 }
             }
@@ -716,99 +880,32 @@ async fn translate_stream_with_provider(
         }
     }
 
-    final_result.unwrap_or_else(|| ProviderTranslationResult {
+    let result = final_result.unwrap_or_else(|| ProviderTranslationResult {
         provider: provider_name,
         model,
         detected_source_lang: request.source_lang.clone(),
         target_lang: request.target_lang.clone(),
         translation: String::new(),
         success: false,
-        error: Some("翻译任务未完成".to_string()),
-    })
-}
-
-/// 多服务商并行流式翻译 (Old approach: waits for all results then returns)
-async fn _translate_multi_stream_parallel(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    text: String,
-    primary_target: String,
-    secondary_target: String,
-    request_id: Option<u64>,
-) -> Result<MultiProviderResult, String> {
-    if text.trim().is_empty() {
-        return Err("Text is empty".to_string());
-    }
-
-    let req_id = request_id.unwrap_or_else(|| {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64
+        error: Some(error_codes::with_code(
+            error_codes::TRANSLATION_FAILED,
+            "翻译任务未完成",
+        )),
     });
 
-    let providers = get_enabled_providers(&state.db).await?;
+    let status = if result.success { "success" } else { "failed" };
+    let detail = result.error.as_deref();
+    log_translation_metric(
+        "stream",
+        req_id,
+        &result.provider,
+        &result.model,
+        status,
+        started_at.elapsed().as_millis(),
+        detail,
+    );
 
-    if providers.is_empty() {
-        return Err("没有已启用的服务商。请在设置中配置并启用至少一个服务商。".to_string());
-    }
-
-    if let Ok(mut loading) = state.main_loading.lock() {
-        *loading = true;
-    }
-
-    let detector_config = providers
-        .iter()
-        .find(|p| p.provider_name == "zhipu")
-        .or_else(|| providers.first())
-        .ok_or("无可用服务商")?;
-
-    let (detected_lang, target_lang) =
-        match detect_and_plan(detector_config, &text, &primary_target, &secondary_target).await {
-            Ok(res) => res,
-            Err(e) => {
-                if let Ok(mut loading) = state.main_loading.lock() {
-                    *loading = false;
-                }
-                return Err(format!("语言检测失败: {}", e));
-            }
-        };
-
-    let request = TranslationRequest {
-        text: text.clone(),
-        source_lang: detected_lang.clone(),
-        target_lang: target_lang.clone(),
-    };
-
-    let mut futures = Vec::new();
-    for config in providers.iter() {
-        let app_clone = app.clone();
-        let config_clone = config.clone();
-        let request_clone = request.clone();
-        let req_id_clone = req_id;
-
-        futures.push(async move {
-            translate_stream_with_provider(&app_clone, &config_clone, &request_clone, req_id_clone)
-                .await
-        });
-    }
-
-    let results = join_all(futures).await;
-
-    if let Ok(mut loading) = state.main_loading.lock() {
-        *loading = false;
-    }
-
-    let mut final_results = Vec::new();
-    for mut res in results {
-        res.detected_source_lang = detected_lang.clone();
-        res.target_lang = target_lang.clone();
-        final_results.push(res);
-    }
-
-    Ok(MultiProviderResult {
-        results: final_results,
-    })
+    result
 }
 
 /// 语言检测结果
@@ -818,48 +915,43 @@ pub struct LanguageDetectionResult {
     pub target_lang: String,
 }
 
-/// 多服务商并行流式翻译（通过事件流式更新前端）
+/// 单服务商流式翻译（通过事件流式更新前端）
 #[tauri::command]
-pub async fn translate_multi_stream_individual(
+pub async fn translate_active_provider_stream(
     app: AppHandle,
     state: State<'_, AppState>,
     text: String,
     #[allow(non_snake_case)] primaryTarget: String,
     #[allow(non_snake_case)] secondaryTarget: String,
     #[allow(non_snake_case)] requestId: u64,
-    providers: Vec<String>, // List of provider names to use
 ) -> Result<LanguageDetectionResult, String> {
     if text.trim().is_empty() {
-        return Err("Text is empty".to_string());
+        return Err(error_codes::with_code(
+            error_codes::EMPTY_TEXT,
+            "输入文本不能为空",
+        ));
     }
     clear_cancelled_request(&state, requestId);
 
-    // Get all enabled providers
-    let all_enabled_providers = get_enabled_providers(&state.db).await?;
-    if all_enabled_providers.is_empty() {
-        return Err("没有已启用的服务商。请在设置中配置并启用至少一个服务商。".to_string());
+    let active_provider = get_active_provider(&state.db).await?;
+    if !provider_can_translate(&active_provider) {
+        return Err(error_codes::with_code(
+            error_codes::INVALID_PROVIDER_CONFIG,
+            "当前启用服务商缺少可用 API Key，无法进行翻译",
+        ));
     }
 
-    // Filter providers based on the requested names
-    let selected_providers: Vec<ProviderConfig> = all_enabled_providers
-        .into_iter()
-        .filter(|p| providers.contains(&p.provider_name))
-        .collect();
+    let (detected_lang, target_lang) = detect_and_plan(&text, &primaryTarget, &secondaryTarget);
 
-    if selected_providers.is_empty() {
-        return Err("没有找到指定的已启用服务商。".to_string());
-    }
-
-    // 1. Language detection (Zhipu only)
-    let detector_config = zhipu_detector_config(&state.db).await?;
-
-    let (detected_lang, target_lang) =
-        match detect_and_plan(&detector_config, &text, &primaryTarget, &secondaryTarget).await {
-            Ok(res) => res,
-            Err(e) => {
-                return Err(format!("语言检测失败: {}", e));
-            }
-        };
+    log_translation_metric(
+        "stream",
+        requestId,
+        &active_provider.provider_name,
+        &active_provider.model,
+        "accepted",
+        0,
+        None,
+    );
 
     let base_request = TranslationRequest {
         text: text.clone(),
@@ -867,36 +959,23 @@ pub async fn translate_multi_stream_individual(
         target_lang: target_lang.clone(),
     };
 
-    // Store abort handles for cancellation
     let mut abort_handles_for_request = HashMap::new();
 
-    let mut join_handles = Vec::new();
+    let app_clone = app.clone();
+    let config_clone = active_provider.clone();
+    let request_clone = base_request.clone();
+    let req_id_clone = requestId;
 
-    for config in selected_providers.into_iter() {
-        let app_clone = app.clone();
-        let config_clone = config.clone();
-        let request_clone = base_request.clone();
-        let req_id_clone = requestId;
+    let (abort_handle, abort_registration) = AbortHandle::new_pair();
+    abort_handles_for_request.insert(config_clone.provider_name.clone(), abort_handle);
 
-        // Create an AbortHandle for each individual streaming task
-        let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        abort_handles_for_request.insert(config_clone.provider_name.clone(), abort_handle);
-
-        let join_handle = tokio::spawn(async move {
-            let _ = Abortable::new(
-                translate_stream_with_provider(
-                    &app_clone,
-                    &config_clone,
-                    &request_clone,
-                    req_id_clone,
-                ),
-                abort_registration,
-            )
-            .await;
-        });
-
-        join_handles.push(join_handle);
-    }
+    let join_handle = tokio::spawn(async move {
+        let _ = Abortable::new(
+            translate_stream_with_provider(&app_clone, &config_clone, &request_clone, req_id_clone),
+            abort_registration,
+        )
+        .await;
+    });
 
     // Store the individual abort handles under the main requestId
     {
@@ -912,7 +991,7 @@ pub async fn translate_multi_stream_individual(
     {
         let app_handle = app.clone();
         tokio::spawn(async move {
-            let _ = futures::future::join_all(join_handles).await;
+            let _ = join_handle.await;
             if let Some(state) = app_handle.try_state::<AppState>() {
                 if let Ok(mut handles) = state.main_abort_handles.lock() {
                     handles.remove(&requestId);
@@ -932,35 +1011,39 @@ pub async fn translate_multi_stream_individual(
 
 /// 使用指定的源语言和目标语言进行流式翻译（跳过语言检测）
 #[tauri::command]
-pub async fn translate_with_specified_langs(
+pub async fn translate_active_provider_with_specified_langs_stream(
     app: AppHandle,
     state: State<'_, AppState>,
     text: String,
     #[allow(non_snake_case)] sourceLang: String,
     #[allow(non_snake_case)] targetLang: String,
     #[allow(non_snake_case)] requestId: u64,
-    providers: Vec<String>,
 ) -> Result<(), String> {
     if text.trim().is_empty() {
-        return Err("Text is empty".to_string());
+        return Err(error_codes::with_code(
+            error_codes::EMPTY_TEXT,
+            "输入文本不能为空",
+        ));
     }
     clear_cancelled_request(&state, requestId);
 
-    // Get all enabled providers
-    let all_enabled_providers = get_enabled_providers(&state.db).await?;
-    if all_enabled_providers.is_empty() {
-        return Err("没有已启用的服务商。请在设置中配置并启用至少一个服务商。".to_string());
+    let active_provider = get_active_provider(&state.db).await?;
+    if !provider_can_translate(&active_provider) {
+        return Err(error_codes::with_code(
+            error_codes::INVALID_PROVIDER_CONFIG,
+            "当前启用服务商缺少可用 API Key，无法进行翻译",
+        ));
     }
 
-    // Filter providers based on the requested names
-    let selected_providers: Vec<ProviderConfig> = all_enabled_providers
-        .into_iter()
-        .filter(|p| providers.contains(&p.provider_name))
-        .collect();
-
-    if selected_providers.is_empty() {
-        return Err("没有找到指定的已启用服务商。".to_string());
-    }
+    log_translation_metric(
+        "stream_with_langs",
+        requestId,
+        &active_provider.provider_name,
+        &active_provider.model,
+        "accepted",
+        0,
+        None,
+    );
 
     let base_request = TranslationRequest {
         text: text.clone(),
@@ -968,34 +1051,23 @@ pub async fn translate_with_specified_langs(
         target_lang: targetLang.clone(),
     };
 
-    // Store abort handles for cancellation
     let mut abort_handles_for_request = HashMap::new();
-    let mut join_handles = Vec::new();
 
-    for config in selected_providers.into_iter() {
-        let app_clone = app.clone();
-        let config_clone = config.clone();
-        let request_clone = base_request.clone();
-        let req_id_clone = requestId;
+    let app_clone = app.clone();
+    let config_clone = active_provider.clone();
+    let request_clone = base_request.clone();
+    let req_id_clone = requestId;
 
-        let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        abort_handles_for_request.insert(config_clone.provider_name.clone(), abort_handle);
+    let (abort_handle, abort_registration) = AbortHandle::new_pair();
+    abort_handles_for_request.insert(config_clone.provider_name.clone(), abort_handle);
 
-        let join_handle = tokio::spawn(async move {
-            let _ = Abortable::new(
-                translate_stream_with_provider(
-                    &app_clone,
-                    &config_clone,
-                    &request_clone,
-                    req_id_clone,
-                ),
-                abort_registration,
-            )
-            .await;
-        });
-
-        join_handles.push(join_handle);
-    }
+    let join_handle = tokio::spawn(async move {
+        let _ = Abortable::new(
+            translate_stream_with_provider(&app_clone, &config_clone, &request_clone, req_id_clone),
+            abort_registration,
+        )
+        .await;
+    });
 
     // Store the individual abort handles under the main requestId
     {
@@ -1009,7 +1081,7 @@ pub async fn translate_with_specified_langs(
     {
         let app_handle = app.clone();
         tokio::spawn(async move {
-            let _ = futures::future::join_all(join_handles).await;
+            let _ = join_handle.await;
             if let Some(state) = app_handle.try_state::<AppState>() {
                 if let Ok(mut handles) = state.main_abort_handles.lock() {
                     handles.remove(&requestId);
@@ -1022,4 +1094,95 @@ pub async fn translate_with_specified_langs(
     }
 
     Ok(())
+}
+
+/// 兼容旧命令：保留 `translate_multi_stream_individual` 命名
+#[tauri::command]
+pub async fn translate_multi_stream_individual(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    text: String,
+    #[allow(non_snake_case)] primaryTarget: String,
+    #[allow(non_snake_case)] secondaryTarget: String,
+    #[allow(non_snake_case)] requestId: u64,
+) -> Result<LanguageDetectionResult, String> {
+    translate_active_provider_stream(app, state, text, primaryTarget, secondaryTarget, requestId)
+        .await
+}
+
+/// 兼容旧命令：保留 `translate_with_specified_langs` 命名
+#[tauri::command]
+pub async fn translate_with_specified_langs(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    text: String,
+    #[allow(non_snake_case)] sourceLang: String,
+    #[allow(non_snake_case)] targetLang: String,
+    #[allow(non_snake_case)] requestId: u64,
+) -> Result<(), String> {
+    translate_active_provider_with_specified_langs_stream(
+        app, state, text, sourceLang, targetLang, requestId,
+    )
+    .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn now_request_id_prefers_given_value() {
+        assert_eq!(now_request_id(Some(42)), 42);
+    }
+
+    #[test]
+    fn normalize_model_uses_fallback_for_empty_model() {
+        let got = normalize_model("openai", "");
+        assert_eq!(got, providers::DEFAULT_OPENAI_MODEL);
+    }
+
+    #[test]
+    fn normalize_base_url_uses_preset_default() {
+        let got = normalize_base_url("moonshot", None);
+        assert_eq!(
+            got.as_deref(),
+            Some("https://api.moonshot.ai/v1/chat/completions")
+        );
+    }
+
+    #[test]
+    fn provider_can_translate_matches_expected_rules() {
+        let ollama = ProviderConfig {
+            provider_name: "ollama".to_string(),
+            enabled: true,
+            api_key: String::new(),
+            model: "llama3.2".to_string(),
+            base_url: Some("http://localhost:11434/api/chat".to_string()),
+        };
+        assert!(provider_can_translate(&ollama));
+
+        let openai_without_key = ProviderConfig {
+            provider_name: "openai".to_string(),
+            enabled: true,
+            api_key: String::new(),
+            model: "gpt-4.1-mini".to_string(),
+            base_url: Some("https://api.openai.com/v1/chat/completions".to_string()),
+        };
+        assert!(!provider_can_translate(&openai_without_key));
+    }
+
+    #[test]
+    fn normalize_whatlang_code_maps_common_languages() {
+        assert_eq!(normalize_whatlang_code_to_app_lang("eng"), Some("en"));
+        assert_eq!(normalize_whatlang_code_to_app_lang("cmn"), Some("zh-CN"));
+        assert_eq!(normalize_whatlang_code_to_app_lang("jpn"), Some("ja"));
+        assert_eq!(normalize_whatlang_code_to_app_lang("kor"), Some("ko"));
+        assert_eq!(normalize_whatlang_code_to_app_lang("spa"), Some("es"));
+    }
+
+    #[test]
+    fn detect_language_locally_has_reasonable_fallback() {
+        assert_eq!(detect_language_locally(""), "en");
+        assert_eq!(detect_language_locally("你好"), "zh-CN");
+    }
 }

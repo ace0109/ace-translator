@@ -7,6 +7,6 @@ pub mod provider;
 pub mod zhipu;
 
 pub use provider::{
-    AIError, AIProvider, ApiTestResponse, ProviderConfig, StreamEvent, TranslationRequest,
+    AIProvider, ApiTestResponse, ProviderConfig, StreamEvent, TranslationRequest,
     TranslationResponse,
 };
